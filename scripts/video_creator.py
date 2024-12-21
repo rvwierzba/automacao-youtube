@@ -1,6 +1,6 @@
 # scripts/video_creator.py
 
-from moviepy import TextClip, CompositeVideoClip, ColorClip
+from moviepy.editor import TextClip, CompositeVideoClip, ColorClip
 import os
 import logging
 

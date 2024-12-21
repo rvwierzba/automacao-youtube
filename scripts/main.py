@@ -11,6 +11,9 @@ from dotenv import load_dotenv
 # Carregar variáveis de ambiente
 load_dotenv()
 
+# Garantir que o diretório 'logs/' existe
+os.makedirs('logs', exist_ok=True)
+
 # Configurar logging
 logging.basicConfig(
     filename='logs/main.log',
@@ -20,7 +23,7 @@ logging.basicConfig(
 
 def carregar_configuracao(caminho_config='config/channels_config.json'):
     try:
-        with open(caminho_config, 'r') as f:
+        with open(caminho_config, 'r', encoding='utf-8') as f:
             config = json.load(f)
         return config['channels']
     except Exception as e:

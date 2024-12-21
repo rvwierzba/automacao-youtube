@@ -1,0 +1,8 @@
+# .gitignore
+
+# Arquivos de configuração
+config/channels_config.json
+credentials/*.json
+.env
+logs/
+generated_videos/

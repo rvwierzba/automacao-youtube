@@ -1,0 +1,73 @@
+# .github/workflows/main.yml
+
+name: Automação de Vídeos para YouTube
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+  schedule:
+    - cron: '0 5 * * *'  # Diariamente às 05:00 UTC
+    - cron: '0 19 * * *' # Diariamente às 19:00 UTC
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Passo 1: Checkout do Código
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      # Passo 2: Configurar Python
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      # Passo 3: Instalar Dependências Python
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+        shell: bash
+
+      # Passo 4: Decodificar e Criar Arquivos de Credenciais para Cada Canal
+      - name: Decode Secrets and Create JSON Files
+        run: |
+          # fizzquirk
+          echo "${{ secrets.CLIENT_SECRET_FILE_fizzquirk }}" | base64 --decode > credentials/canal1_client_secret.json
+          echo "${{ secrets.TOKEN_FILE_fizzquirk }}" | base64 --decode > credentials/canal1_token.json
+
+          # Adicione mais canais conforme necessário
+        shell: bash
+
+      # Passo 5: Configurar Variáveis de Ambiente
+      - name: Set Environment Variables
+        run: |
+          echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> $GITHUB_ENV
+          echo "YOUTUBE_API_KEY=${{ secrets.YOUTUBE_API_KEY }}" >> $GITHUB_ENV
+          echo "YOUTUBE_CHANNEL_ID=${{ secrets.YOUTUBE_CHANNEL_ID }}" >> $GITHUB_ENV
+        shell: bash
+
+      # Passo 6: Executar o Script Principal
+      - name: Run Main Script
+        run: |
+          python scripts/main.py
+        shell: bash
+
+      # Passo 7: Upload dos Vídeos Gerados (Opcional)
+      - name: Upload Generated Videos
+        uses: actions/upload-artifact@v3
+        with:
+          name: generated_videos
+          path: generated_videos/
+
+      # Passo 8: Upload de Logs (Opcional)
+      - name: Upload Logs
+        uses: actions/upload-artifact@v3
+        with:
+          name: logs
+          path: |
+            logs/main.log

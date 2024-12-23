@@ -36,11 +36,30 @@ jobs:
       # Passo 4: Decodificar e Criar Arquivos de Credenciais para Cada Canal
       - name: Decode Secrets and Create JSON Files
         run: |
+          mkdir -p credentials
           # fizzquirk
           echo "${{ secrets.CLIENT_SECRET_FILE_fizzquirk }}" | base64 --decode > credentials/canal1_client_secret.json
           echo "${{ secrets.TOKEN_FILE_fizzquirk }}" | base64 --decode > credentials/canal1_token.json
 
           # Adicione mais canais conforme necessário
+        shell: bash
+
+      # Passo 4.1: Verificar os Arquivos Decodificados (Depuração)
+      - name: Verify Credentials Files
+        run: |
+          if [ -s credentials/canal1_client_secret.json ]; then
+            echo "client_secret.json foi decodificado com sucesso."
+          else
+            echo "Erro: client_secret.json está vazio ou não foi criado corretamente."
+            exit 1
+          fi
+
+          if [ -s credentials/canal1_token.json ]; then
+            echo "token.json foi decodificado com sucesso."
+          else
+            echo "Erro: token.json está vazio ou não foi criado corretamente."
+            exit 1
+          fi
         shell: bash
 
       # Passo 5: Configurar Variáveis de Ambiente

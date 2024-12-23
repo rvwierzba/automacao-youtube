@@ -1,67 +1,62 @@
 # scripts/youtube_auth.py
 
+import logging
 from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 import os
 import json
-from dotenv import load_dotenv
+import pickle
 
-load_dotenv()
+SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
 
 def authenticate_youtube(client_secret_path, token_path):
-    SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
-    flow = InstalledAppFlow.from_client_secrets_file(client_secret_path, SCOPES)
-    credentials = flow.run_local_server(port=0)
-    
-    # Salvar as credenciais para reutilização
-    with open(token_path, 'w') as token_file:
-        token_file.write(credentials.to_json())
-    
-    print(f"Autenticação concluída para {client_secret_path}. Token salvo em {token_path}.")
-
-def load_credentials(client_secret_path, token_path):
+    creds = None
+    # Se o token já existir, carregue-o
     if os.path.exists(token_path):
-        from google.oauth2.credentials import Credentials
-        creds = Credentials.from_authorized_user_file(token_path, ['https://www.googleapis.com/auth/youtube.upload'])
-        youtube = build('youtube', 'v3', credentials=creds)
-        return youtube
-    else:
-        authenticate_youtube(client_secret_path, token_path)
-        from google.oauth2.credentials import Credentials
-        creds = Credentials.from_authorized_user_file(token_path, ['https://www.googleapis.com/auth/youtube.upload'])
-        youtube = build('youtube', 'v3', credentials=creds)
-        return youtube
+        with open(token_path, 'rb') as token:
+            creds = pickle.load(token)
+    # Se não houver credenciais válidas disponíveis, faça o login
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+            logging.info("Token atualizado com sucesso.")
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(client_secret_path, SCOPES)
+            creds = flow.run_local_server(port=0)
+            logging.info("Autenticação OAuth2 realizada com sucesso.")
+        # Salve as credenciais para a próxima execução
+        with open(token_path, 'wb') as token:
+            pickle.dump(creds, token)
+    youtube = build('youtube', 'v3', credentials=creds)
+    return youtube
 
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description='Autenticação para canal do YouTube.')
-    parser.add_argument('--channel', type=str, required=True, help='Nome do canal conforme definido em channels_config.json')
+    parser = argparse.ArgumentParser(description='Autenticar com a API do YouTube.')
+    parser.add_argument('--channel', type=str, required=True, help='Nome do canal a ser autenticado.')
+
     args = parser.parse_args()
-    
-    channel_name = args.channel
-    
-    # Carregar configurações dos canais
-    config_path = os.path.join('config', 'channels_config.json')
-    if not os.path.exists(config_path):
-        print(f"Arquivo de configuração '{config_path}' não encontrado.")
-        exit(1)
-    
-    with open(config_path, 'r', encoding='utf-8') as f:
-        config = json.load(f)
-    
-    channels = config.get('channels', [])
-    channel = next((c for c in channels if c['name'] == channel_name), None)
-    
-    if not channel:
-        print(f"Canal '{channel_name}' não encontrado na configuração.")
-        exit(1)
-    
-    client_secret_file = os.path.join('credentials', channel['client_secret_file'])
-    token_file = os.path.join('credentials', channel['token_file'])
-    
-    if not os.path.exists(client_secret_file):
-        print(f"Arquivo de client secret '{client_secret_file}' não encontrado.")
-        exit(1)
-    
-    authenticate_youtube(client_secret_file, token_file)
+
+    config_path = 'config/channels_config.json'
+
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+        canais = config['channels']
+    except Exception as e:
+        logging.error(f"Erro ao carregar o arquivo de configuração: {e}")
+        raise
+
+    canal_config = next((c for c in canais if c['name'] == args.channel), None)
+
+    if not canal_config:
+        logging.error(f"Canal {args.channel} não encontrado na configuração.")
+        raise ValueError(f"Canal {args.channel} não encontrado.")
+
+    client_secret_file = os.path.join('credentials', canal_config['client_secret_file'])
+    token_file = os.path.join('credentials', canal_config['token_file'])
+
+    youtube = authenticate_youtube(client_secret_file, token_file)
+    logging.info(f"Autenticação concluída para o canal {args.channel}.")

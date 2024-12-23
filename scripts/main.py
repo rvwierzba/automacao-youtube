@@ -4,7 +4,7 @@ import os
 import logging
 import json
 from upload_youtube import upload_video_to_youtube
-from youtube_auth import load_credentials
+from youtube_auth import load_credentials  # Certifique-se de que esta função existe
 from video_creator import criar_video
 from dotenv import load_dotenv
 

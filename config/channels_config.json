@@ -1,0 +1,13 @@
+{
+  "channels": [
+    {
+      "name": "fizzquirk",
+      "client_secret_file": "canal1_client_secret.json",
+      "token_file": "canal1_token.json",
+      "title": "fizzquirk",
+      "description": "💡 Brightening your day with cool facts! 🌟 #FizzQuirk"
+    }
+    
+    
+  ]
+}

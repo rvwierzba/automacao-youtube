@@ -63,11 +63,14 @@ jobs:
         with:
           name: generated_videos
           path: generated_videos/
+          if-no-files-found: warn
+          include-hidden-files: false
 
       # Passo 8: Upload de Logs (Opcional)
       - name: Upload Logs
         uses: actions/upload-artifact@v3
         with:
           name: logs
-          path: |
-            logs/main.log
+          path: logs/main.log
+          if-no-files-found: warn
+          include-hidden-files: false

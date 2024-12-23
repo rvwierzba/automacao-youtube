@@ -10,7 +10,7 @@ import pickle
 
 SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
 
-def authenticate_youtube(client_secret_path, token_path):
+def load_credentials(client_secret_path, token_path):
     creds = None
     # Se o token já existir, carregue-o
     if os.path.exists(token_path):
@@ -58,5 +58,5 @@ if __name__ == "__main__":
     client_secret_file = os.path.join('credentials', canal_config['client_secret_file'])
     token_file = os.path.join('credentials', canal_config['token_file'])
 
-    youtube = authenticate_youtube(client_secret_file, token_file)
+    youtube = load_credentials(client_secret_file, token_file)
     logging.info(f"Autenticação concluída para o canal {args.channel}.")

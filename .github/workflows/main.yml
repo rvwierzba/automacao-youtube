@@ -46,11 +46,23 @@ jobs:
           POLICY_FILE=$(convert -list policy | grep -i "policy file" | awk '{print $4}')
           echo "Caminho do policy.xml: $POLICY_FILE"
 
+          # Verificar se o policy.xml foi encontrado
+          if [ -z "$POLICY_FILE" ]; then
+            echo "Erro: policy.xml não encontrado."
+            exit 1
+          fi
+
           # Fazer backup do arquivo policy.xml original
           sudo cp "$POLICY_FILE" "${POLICY_FILE}.bak"
 
-          # Comentar todas as linhas que contêm 'pattern="PNG' (incluindo variações como 'PNG32')
-          sudo sed -i '/pattern="PNG[^"]*"/ s/^/<!-- /; /pattern="PNG[^"]*"/ s/$/ -->/' "$POLICY_FILE"
+          # Verificar se existem políticas restritivas para PNG
+          if grep -q 'pattern="PNG[^"]*"' "$POLICY_FILE"; then
+            # Comentar as linhas restritivas
+            sudo sed -i '/pattern="PNG[^"]*"/ s/^/<!-- /; /pattern="PNG[^"]*"/ s/$/ -->/' "$POLICY_FILE"
+            echo "Políticas restritivas para PNG comentadas."
+          else
+            echo "Nenhuma política restritiva para PNG encontrada."
+          fi
 
           # Adicionar uma nova linha que permite leitura e escrita para todas as variações de PNG
           echo '<policy domain="coder" rights="read|write" pattern="PNG*" />' | sudo tee -a "$POLICY_FILE"
@@ -58,6 +70,9 @@ jobs:
           # Verificar se a modificação foi aplicada
           echo "Conteúdo atualizado de $POLICY_FILE:"
           grep 'pattern="PNG"' "$POLICY_FILE" || echo "Nenhuma política PNG encontrada."
+
+          # Adicionar '|| true' para evitar que o passo falhe caso o grep não encontre correspondências
+          grep 'pattern="PNG"' "$POLICY_FILE" || echo "Nenhuma política PNG encontrada." || true
         shell: bash
 
       # Passo 4.1: Exibir o Conteúdo Atualizado do `policy.xml` para Depuração (Opcional)

@@ -46,7 +46,7 @@ jobs:
           echo "Conteúdo atual de /etc/ImageMagick-6/policy.xml:"
           grep 'pattern="PNG"' /etc/ImageMagick-6/policy.xml || echo "Nenhuma política PNG encontrada."
 
-          # Comentar todas as linhas que bloqueiam PNG
+          # Comentar todas as linhas que contêm 'pattern="PNG"'
           sudo sed -i '/pattern="PNG"/ s/^/<!-- /; /pattern="PNG"/ s/$/ -->/' /etc/ImageMagick-6/policy.xml
 
           # Adicionar uma nova linha que permite leitura e escrita para PNG
@@ -57,11 +57,23 @@ jobs:
           grep 'pattern="PNG"' /etc/ImageMagick-6/policy.xml
         shell: bash
 
-      # Passo 4.0: Exibir o Conteúdo Atual do `policy.xml` para Depuração (Opcional)
+      # Passo 4.1: Exibir o Conteúdo Atualizado do `policy.xml` para Depuração
       - name: Display Updated ImageMagick Policy
         run: |
           echo "Conteúdo atualizado de /etc/ImageMagick-6/policy.xml:"
-          grep 'pattern="PNG"' /etc/ImageMagick-6/policy.xml
+          grep 'pattern="PNG"' /etc/ImageMagick-6/policy.xml || echo "Nenhuma política PNG encontrada."
+        shell: bash
+
+      # Passo 4.2: Verificar Permissões do Diretório /tmp
+      - name: Check /tmp Permissions
+        run: |
+          ls -ld /tmp
+        shell: bash
+
+      # Passo 4.3: Reiniciar o Serviço ImageMagick (Opcional)
+      - name: Restart ImageMagick Service
+        run: |
+          sudo service imagemagick restart || echo "Não foi possível reiniciar o serviço ImageMagick."
         shell: bash
 
       # Passo 5: Decodificar e Criar Arquivos de Credenciais para Cada Canal

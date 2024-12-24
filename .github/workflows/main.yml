@@ -63,12 +63,12 @@ jobs:
           grep 'pattern="PNG"' "$POLICY_FILE" || echo "Nenhuma política PNG encontrada."
         shell: bash
       
-            # Passo 4.1: Exibir o Conteúdo Atualizado do `policy.xml` para Depuração
-            - name: Display Updated ImageMagick Policy
-              run: |
-                echo "Conteúdo atualizado de /etc/ImageMagick-6/policy.xml:"
-                grep 'pattern="PNG"' /etc/ImageMagick-6/policy.xml || echo "Nenhuma política PNG encontrada."
-              shell: bash
+      # Passo 4.1: Exibir o Conteúdo Atualizado do `policy.xml` para Depuração
+      - name: Display Updated ImageMagick Policy
+        run: |
+          echo "Conteúdo atualizado de /etc/ImageMagick-6/policy.xml:"
+          grep 'pattern="PNG"' /etc/ImageMagick-6/policy.xml || echo "Nenhuma política PNG encontrada."
+        shell: bash
 
       # Passo 4.2: Verificar Permissões do Diretório /tmp
       - name: Check /tmp Permissions

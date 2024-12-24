@@ -76,7 +76,7 @@ jobs:
           sudo service imagemagick restart || echo "Não foi possível reiniciar o serviço ImageMagick."
         shell: bash
 
-      # Passo 5: Decodificar e Criar Arquivos de Credenciais para Cada Canal
+       # Passo 5: Decodificar e Criar Arquivos de Credenciais para Cada Canal
       - name: Decode Secrets and Create JSON Files
         run: |
           mkdir -p credentials

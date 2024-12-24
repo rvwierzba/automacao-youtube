@@ -4,7 +4,7 @@ import os
 import logging
 import json
 from upload_youtube import upload_video_to_youtube
-from youtube_auth import load_credentials  # Certifique-se de que esta função existe
+from youtube_auth import load_credentials
 from video_creator import criar_video
 from dotenv import load_dotenv
 
@@ -23,6 +23,7 @@ logging.basicConfig(
 
 def carregar_configuracao(caminho_config='config/channels_config.json'):
     try:
+        logging.info(f"Tentando carregar o arquivo de configuração: {caminho_config}")
         with open(caminho_config, 'r', encoding='utf-8') as f:
             config = json.load(f)
         logging.info("Arquivo de configuração carregado com sucesso.")
@@ -36,16 +37,27 @@ def main():
     # Carregar configurações dos canais
     canais = carregar_configuracao()
 
+    if not canais:
+        logging.warning("Nenhum canal encontrado na configuração.")
+        return
+
     for canal in canais:
         try:
             nome_canal = canal['name']
+            logging.info(f"Processando o canal: {nome_canal}")
             client_secret_file = os.path.join('credentials', canal['client_secret_file'])
             token_file = os.path.join('credentials', canal['token_file'])
             titulo = canal['title']
             descricao = canal['description']
             keywords = canal.get('keywords', "")  # Adicione uma chave 'keywords' se necessário
 
-            logging.info(f"Processando o canal: {nome_canal}")
+            # Verificar se os arquivos de credenciais existem
+            if not os.path.exists(client_secret_file):
+                logging.error(f"Arquivo client_secret não encontrado: {client_secret_file}")
+                continue
+            if not os.path.exists(token_file):
+                logging.error(f"Arquivo token não encontrado: {token_file}")
+                continue
 
             # Carregar ou autenticar no YouTube
             youtube = load_credentials(client_secret_file, token_file)
@@ -65,4 +77,4 @@ def main():
     logging.info("Script principal concluído.")
 
 if __name__ == "__main__":
-    main()
+        main()

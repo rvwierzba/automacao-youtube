@@ -49,8 +49,8 @@ jobs:
           # Fazer backup do arquivo policy.xml original
           sudo cp "$POLICY_FILE" "${POLICY_FILE}.bak"
 
-          # Comentar todas as linhas que contêm 'pattern="PNG"'
-          sudo sed -i '/pattern="PNG"/ s/^/<!-- /; /pattern="PNG"/ s/$/ -->/' "$POLICY_FILE"
+          # Comentar todas as linhas que contêm 'pattern="PNG' (incluindo variações como 'PNG32')
+          sudo sed -i '/pattern="PNG[^"]*"/ s/^/<!-- /; /pattern="PNG[^"]*"/ s/$/ -->/' "$POLICY_FILE"
 
           # Adicionar uma nova linha que permite leitura e escrita para todas as variações de PNG
           echo '<policy domain="coder" rights="read|write" pattern="PNG*" />' | sudo tee -a "$POLICY_FILE"

@@ -33,7 +33,23 @@ jobs:
           pip install -r requirements.txt
         shell: bash
 
-      # Passo 4: Decodificar e Criar Arquivos de Credenciais para Cada Canal
+      # Passo 4: Instalar e Configurar ImageMagick
+      - name: Install and Configure ImageMagick
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y imagemagick
+
+          # Verificar a versão instalada
+          convert --version
+
+          # Modificar a política de segurança do ImageMagick para permitir operações com PNG
+          sudo sed -i 's/<policy domain="coder" rights="none" pattern="PNG" \/>/<policy domain="coder" rights="read|write" pattern="PNG" \/>/' /etc/ImageMagick-6/policy.xml
+
+          # Verificar se a modificação foi aplicada
+          grep 'pattern="PNG"' /etc/ImageMagick-6/policy.xml
+        shell: bash
+
+      # Passo 5: Decodificar e Criar Arquivos de Credenciais para Cada Canal
       - name: Decode Secrets and Create JSON Files
         run: |
           mkdir -p credentials
@@ -44,7 +60,7 @@ jobs:
           # Adicione mais canais conforme necessário
         shell: bash
 
-      # Passo 4.1: Verificar os Arquivos Decodificados (Depuração)
+      # Passo 5.1: Verificar os Arquivos Decodificados (Depuração)
       - name: Verify Credentials Files
         run: |
           if [ -s credentials/canal1_client_secret.json ]; then
@@ -62,7 +78,7 @@ jobs:
           fi
         shell: bash
 
-      # Passo 5: Configurar Variáveis de Ambiente
+      # Passo 6: Configurar Variáveis de Ambiente
       - name: Set Environment Variables
         run: |
           echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> $GITHUB_ENV
@@ -70,13 +86,13 @@ jobs:
           echo "YOUTUBE_CHANNEL_ID=${{ secrets.YOUTUBE_CHANNEL_ID }}" >> $GITHUB_ENV
         shell: bash
 
-      # Passo 6: Executar o Script Principal
+      # Passo 7: Executar o Script Principal
       - name: Run Main Script
         run: |
           python scripts/main.py
         shell: bash
 
-      # Passo 7: Upload dos Vídeos Gerados (Opcional)
+      # Passo 8: Upload dos Vídeos Gerados (Opcional)
       - name: Upload Generated Videos
         uses: actions/upload-artifact@v3
         with:
@@ -85,7 +101,7 @@ jobs:
           if-no-files-found: warn
           include-hidden-files: false
 
-      # Passo 8: Upload de Logs (Opcional)
+      # Passo 9: Upload de Logs (Opcional)
       - name: Upload Logs
         uses: actions/upload-artifact@v3
         with:

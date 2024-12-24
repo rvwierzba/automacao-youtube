@@ -33,11 +33,27 @@ jobs:
           pip install -r requirements.txt
         shell: bash
 
-      # Passo 4: Instalar e Configurar ImageMagick 6
-      - name: Install and Configure ImageMagick 6
+      # Passo 4: Instalar e Configurar ImageMagick 7
+      - name: Install and Configure ImageMagick 7
         run: |
+          set -x  # Ativar modo de depuração para exibir comandos
+          set +e  # Continuar mesmo se algum comando falhar
+
+          # Atualizar os repositórios e instalar dependências necessárias
           sudo apt-get update
-          sudo apt-get install -y imagemagick
+          sudo apt-get install -y build-essential checkinstall
+          sudo apt-get install -y libjpeg-dev libpng-dev libtiff-dev libgif-dev libx11-dev libxml2-dev libfreetype6-dev liblcms2-dev libbz2-dev libzstd-dev
+
+          # Baixar a versão estável mais recente do ImageMagick 7
+          wget https://download.imagemagick.org/ImageMagick/download/ImageMagick.tar.gz
+          tar xvzf ImageMagick.tar.gz
+          cd ImageMagick-*
+
+          # Configurar, compilar e instalar o ImageMagick 7
+          ./configure --prefix=/usr/local --disable-static --enable-shared
+          make -j$(nproc)
+          sudo make install
+          sudo ldconfig /usr/local/lib
 
           # Verificar a versão instalada
           convert --version
@@ -55,8 +71,14 @@ jobs:
           # Fazer backup do arquivo policy.xml original
           sudo cp "$POLICY_FILE" "${POLICY_FILE}.bak"
 
-          # Comentar todas as linhas que contêm 'pattern="PNG' (incluindo variações como 'PNG32', 'PNG8', etc.)
-          sudo sed -i '/pattern="PNG[^"]*"/ s/^/<!-- /; /pattern="PNG[^"]*"/ s/$/ -->/' "$POLICY_FILE"
+          # Verificar se existem políticas restritivas para PNG
+          if grep -q 'pattern="PNG[^"]*"' "$POLICY_FILE"; then
+            # Comentar as linhas restritivas
+            sudo sed -i '/pattern="PNG[^"]*"/ s/^/<!-- /; /pattern="PNG[^"]*"/ s/$/ -->/' "$POLICY_FILE"
+            echo "Políticas restritivas para PNG comentadas."
+          else
+            echo "Nenhuma política restritiva para PNG encontrada."
+          fi
 
           # Adicionar uma nova linha que permite leitura e escrita para todas as variações de PNG
           echo '<policy domain="coder" rights="read|write" pattern="PNG*" />' | sudo tee -a "$POLICY_FILE"
@@ -67,6 +89,8 @@ jobs:
 
           # Adicionar '|| true' para evitar que o passo falhe caso o grep não encontre correspondências
           grep 'pattern="PNG"' "$POLICY_FILE" || echo "Nenhuma política PNG encontrada." || true
+
+          set -e  # Reativar a saída imediata em caso de erro
         shell: bash
 
       # Passo 4.1: Exibir o Conteúdo Atualizado do `policy.xml` para Depuração (Opcional)

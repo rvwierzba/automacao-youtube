@@ -1,80 +1,145 @@
-# scripts/main.py
+# .github/workflows/main.yml
 
-import os
-import logging
-import json
-from upload_youtube import upload_video_to_youtube
-from youtube_auth import load_credentials
-from video_creator import criar_video
-from dotenv import load_dotenv
+name: Automação de Vídeos para YouTube
 
-# Carregar variáveis de ambiente
-load_dotenv()
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+  schedule:
+    - cron: '0 5 * * *'  # Diariamente às 05:00 UTC
+    - cron: '0 19 * * *' # Diariamente às 19:00 UTC
 
-# Garantir que o diretório 'logs/' existe
-os.makedirs('logs', exist_ok=True)
+jobs:
+  build:
+    runs-on: ubuntu-latest
 
-# Configurar logging
-logging.basicConfig(
-    filename='logs/main.log',
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+    steps:
+      # Passo 1: Checkout do Código
+      - name: Checkout Repository
+        uses: actions/checkout@v3
 
-def carregar_configuracao(caminho_config='config/channels_config.json'):
-    try:
-        logging.info(f"Tentando carregar o arquivo de configuração: {caminho_config}")
-        with open(caminho_config, 'r', encoding='utf-8') as f:
-            config = json.load(f)
-        logging.info("Arquivo de configuração carregado com sucesso.")
-        return config['channels']
-    except Exception as e:
-        logging.error(f"Erro ao carregar o arquivo de configuração: {e}")
-        raise
+      # Passo 2: Configurar Python
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
 
-def main():
-    logging.info("Iniciando o script principal.")
-    # Carregar configurações dos canais
-    canais = carregar_configuracao()
+      # Passo 3: Instalar Dependências Python
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+        shell: bash
 
-    if not canais:
-        logging.warning("Nenhum canal encontrado na configuração.")
-        return
+      # Passo 4: Instalar e Configurar ImageMagick 6
+      - name: Install and Configure ImageMagick 6
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y imagemagick
 
-    for canal in canais:
-        try:
-            nome_canal = canal['name']
-            logging.info(f"Processando o canal: {nome_canal}")
-            client_secret_file = os.path.join('credentials', canal['client_secret_file'])
-            token_file = os.path.join('credentials', canal['token_file'])
-            titulo = canal['title']
-            descricao = canal['description']
-            keywords = canal.get('keywords', "")  # Adicione uma chave 'keywords' se necessário
+          # Verificar a versão instalada
+          convert --version
 
-            # Verificar se os arquivos de credenciais existem
-            if not os.path.exists(client_secret_file):
-                logging.error(f"Arquivo client_secret não encontrado: {client_secret_file}")
-                continue
-            if not os.path.exists(token_file):
-                logging.error(f"Arquivo token não encontrado: {token_file}")
-                continue
+          # Identificar o caminho do policy.xml
+          POLICY_FILE=$(convert -list policy | grep -i "policy file" | awk '{print $4}')
+          echo "Caminho do policy.xml: $POLICY_FILE"
 
-            # Carregar ou autenticar no YouTube
-            youtube = load_credentials(client_secret_file, token_file)
-            logging.info(f"Autenticação bem-sucedida para o canal: {nome_canal}")
+          # Verificar se o policy.xml foi encontrado
+          if [ -z "$POLICY_FILE" ]; then
+            echo "Erro: policy.xml não encontrado."
+            exit 1
+          fi
 
-            # Criar o vídeo
-            video_path = criar_video(texto=nome_canal, output_path='generated_videos')
-            logging.info(f"Vídeo criado em: {video_path}")
+          # Fazer backup do arquivo policy.xml original
+          sudo cp "$POLICY_FILE" "${POLICY_FILE}.bak"
 
-            # Fazer upload para o YouTube
-            upload_video_to_youtube(youtube, video_path, titulo, descricao, keywords=keywords)
-            logging.info(f"Upload concluído para o canal: {nome_canal}")
+          # Comentar todas as linhas que contêm 'pattern="PNG' (incluindo variações como 'PNG32', 'PNG8', etc.)
+          sudo sed -i '/pattern="PNG[^"]*"/ s/^/<!-- /; /pattern="PNG[^"]*"/ s/$/ -->/' "$POLICY_FILE"
 
-        except Exception as e:
-            logging.error(f"Erro ao processar o canal {nome_canal}: {e}")
+          # Adicionar uma nova linha que permite leitura e escrita para todas as variações de PNG
+          echo '<policy domain="coder" rights="read|write" pattern="PNG*" />' | sudo tee -a "$POLICY_FILE"
 
-    logging.info("Script principal concluído.")
+          # Verificar se a modificação foi aplicada
+          echo "Conteúdo atualizado de $POLICY_FILE:"
+          grep 'pattern="PNG"' "$POLICY_FILE" || echo "Nenhuma política PNG encontrada."
 
-if __name__ == "__main__":
-        main()
+          # Adicionar '|| true' para evitar que o passo falhe caso o grep não encontre correspondências
+          grep 'pattern="PNG"' "$POLICY_FILE" || echo "Nenhuma política PNG encontrada." || true
+        shell: bash
+
+      # Passo 4.1: Exibir o Conteúdo Atualizado do `policy.xml` para Depuração (Opcional)
+      - name: Display Updated ImageMagick Policy
+        run: |
+          POLICY_FILE=$(convert -list policy | grep -i "policy file" | awk '{print $4}')
+          echo "Conteúdo atualizado de $POLICY_FILE:"
+          grep 'pattern="PNG"' "$POLICY_FILE" || echo "Nenhuma política PNG encontrada."
+        shell: bash
+
+      # Passo 4.2: Verificar Permissões do Diretório /tmp
+      - name: Check /tmp Permissions
+        run: |
+          ls -ld /tmp
+        shell: bash
+
+      # Passo 5: Decodificar e Criar Arquivos de Credenciais para Cada Canal
+      - name: Decode Secrets and Create JSON Files
+        run: |
+          mkdir -p credentials
+          # fizzquirk
+          echo "${{ secrets.CLIENT_SECRET_FILE_fizzquirk }}" | base64 --decode > credentials/canal1_client_secret.json
+          echo "${{ secrets.TOKEN_FILE_fizzquirk }}" | base64 --decode > credentials/canal1_token.json
+
+          # Adicione mais canais conforme necessário
+        shell: bash
+
+      # Passo 5.1: Verificar os Arquivos Decodificados (Depuração)
+      - name: Verify Credentials Files
+        run: |
+          if [ -s credentials/canal1_client_secret.json ]; then
+            echo "client_secret.json foi decodificado com sucesso."
+          else
+            echo "Erro: client_secret.json está vazio ou não foi criado corretamente."
+            exit 1
+          fi
+
+          if [ -s credentials/canal1_token.json ]; then
+            echo "token.json foi decodificado com sucesso."
+          else
+            echo "Erro: token.json está vazio ou não foi criado corretamente."
+            exit 1
+          fi
+        shell: bash
+
+      # Passo 6: Configurar Variáveis de Ambiente
+      - name: Set Environment Variables
+        run: |
+          echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> $GITHUB_ENV
+          echo "YOUTUBE_API_KEY=${{ secrets.YOUTUBE_API_KEY }}" >> $GITHUB_ENV
+          echo "YOUTUBE_CHANNEL_ID=${{ secrets.YOUTUBE_CHANNEL_ID }}" >> $GITHUB_ENV
+        shell: bash
+
+      # Passo 7: Executar o Script Principal
+      - name: Run Main Script
+        run: |
+          python scripts/main.py
+        shell: bash
+
+      # Passo 8: Upload dos Vídeos Gerados (Opcional)
+      - name: Upload Generated Videos
+        uses: actions/upload-artifact@v3
+        with:
+          name: generated_videos
+          path: generated_videos/
+          if-no-files-found: warn
+          include-hidden-files: false
+
+      # Passo 9: Upload de Logs (Opcional)
+      - name: Upload Logs
+        uses: actions/upload-artifact@v3
+        with:
+          name: logs
+          path: logs/main.log
+          if-no-files-found: warn
+          include-hidden-files: false

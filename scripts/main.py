@@ -2,7 +2,13 @@
 
 import os
 import logging
-from moviepy.editor import TextClip
+
+# Teste de importação
+try:
+    from moviepy.editor import TextClip
+except ImportError as e:
+    logging.error("MoviePy não está instalado.")
+    raise e
 
 def criar_video(texto, output_path='generated_videos'):
     try:

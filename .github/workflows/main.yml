@@ -44,9 +44,9 @@ jobs:
       - name: Decode Secrets and Create JSON Files
         run: |
           mkdir -p credentials
-          # fizzquirk
-          echo "${{ secrets.CLIENT_SECRET_FILE_fizzquirk }}" | base64 --decode > credentials/canal1_client_secret.json
-          echo "${{ secrets.TOKEN_FILE_fizzquirk }}" | base64 --decode > credentials/canal1_token.json
+          # Exemplo para canal1
+          echo "${{ secrets.CLIENT_SECRET_FILE_canal1 }}" | base64 --decode > credentials/canal1_client_secret.json
+          echo "${{ secrets.TOKEN_FILE_canal1 }}" | base64 --decode > credentials/canal1_token.json
 
           # Adicione mais canais conforme necessário
         shell: bash

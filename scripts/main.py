@@ -16,13 +16,13 @@ def criar_video(texto, output_path='generated_videos'):
             color='white',
             size=(1280, 720),
             bg_color='black',
-            method='caption',
+            method='caption',  # Utiliza o Pillow para renderizar o texto
             font='DejaVu-Sans-Bold'  # Fonte disponível no ambiente
         )
         clip = clip.set_duration(10)  # Duração de 10 segundos
 
         # Salvar o vídeo
-        video_filename = f"video_{texto}.mp4"
+        video_filename = f"video_{texto.replace(' ', '_')}.mp4"
         video_full_path = os.path.join(output_path, video_filename)
         clip.write_videofile(video_full_path, codec='libx264', audio=False)
 

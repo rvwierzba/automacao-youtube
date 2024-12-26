@@ -33,6 +33,18 @@ jobs:
           pip install -r requirements.txt
         shell: bash
 
+      # Passo 3.1: Listar Pacotes Instalados
+      - name: List Installed Packages
+        run: |
+          pip list
+        shell: bash
+
+      # Passo 3.2: Verificar Versão do MoviePy
+      - name: Check MoviePy Version
+        run: |
+          python -c "import moviepy; print(moviepy.__version__)"
+        shell: bash
+
       # Passo 4: Instalar Fontes Necessárias (Opcional)
       - name: Install Fonts
         run: |

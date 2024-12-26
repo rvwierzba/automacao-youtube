@@ -6,18 +6,19 @@ from moviepy.editor import TextClip
 
 def criar_video(texto, output_path='generated_videos'):
     try:
+        # Configurar o logging
         logging.basicConfig(level=logging.INFO)
         logging.info(f"Iniciando a criação do vídeo para o texto: {texto}")
         os.makedirs(output_path, exist_ok=True)
 
-        # Criar um clipe de texto simples usando o Pillow
+        # Criar um clipe de texto usando o Pillow
         clip = TextClip(
             texto,
             fontsize=70,
             color='white',
             size=(1280, 720),
             bg_color='black',
-            method='caption',  # Utiliza o Pillow para renderizar o texto
+            method='caption',  # Usar o Pillow para renderizar o texto
             font='DejaVu-Sans-Bold'  # Fonte disponível no ambiente
         )
         clip = clip.set_duration(10)  # Duração de 10 segundos

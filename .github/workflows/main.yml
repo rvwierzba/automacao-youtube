@@ -33,60 +33,11 @@ jobs:
           pip install -r requirements.txt
         shell: bash
 
-      # Passo 4: Instalar e Configurar ImageMagick 6
-      - name: Install and Configure ImageMagick 6
+      # Passo 4: Instalar Fontes Necessárias (Opcional)
+      - name: Install Fonts
         run: |
           sudo apt-get update
-          sudo apt-get install -y imagemagick
-
-          # Verificar a versão instalada
-          convert --version
-
-          # Identificar o caminho do policy.xml
-          POLICY_FILE=$(convert -list policy | grep -i "policy file" | awk '{print $4}')
-          echo "Caminho do policy.xml: $POLICY_FILE"
-
-          # Verificar se o policy.xml foi encontrado
-          if [ -z "$POLICY_FILE" ]; then
-            echo "Erro: policy.xml não encontrado."
-            exit 1
-          fi
-
-          # Fazer backup do arquivo policy.xml original
-          sudo cp "$POLICY_FILE" "${POLICY_FILE}.bak"
-
-          # Verificar se existem políticas restritivas para PNG
-          if grep -q 'pattern="PNG[^"]*"' "$POLICY_FILE"; then
-            # Comentar as linhas restritivas
-            sudo sed -i '/pattern="PNG[^"]*"/ s/^/<!-- /; /pattern="PNG[^"]*"/ s/$/ -->/' "$POLICY_FILE"
-            echo "Políticas restritivas para PNG comentadas."
-          else
-            echo "Nenhuma política restritiva para PNG encontrada."
-          fi
-
-          # Adicionar uma nova linha que permite leitura e escrita para todas as variações de PNG
-          echo '<policy domain="coder" rights="read|write" pattern="PNG*" />' | sudo tee -a "$POLICY_FILE"
-
-          # Verificar se a modificação foi aplicada
-          echo "Conteúdo atualizado de $POLICY_FILE:"
-          grep 'pattern="PNG"' "$POLICY_FILE" || echo "Nenhuma política PNG encontrada."
-
-          # Adicionar '|| true' para evitar que o passo falhe caso o grep não encontre correspondências
-          grep 'pattern="PNG"' "$POLICY_FILE" || echo "Nenhuma política PNG encontrada." || true
-        shell: bash
-
-      # Passo 4.1: Exibir o Conteúdo Atualizado do `policy.xml` para Depuração (Opcional)
-      - name: Display Updated ImageMagick Policy
-        run: |
-          POLICY_FILE=$(convert -list policy | grep -i "policy file" | awk '{print $4}')
-          echo "Conteúdo atualizado de $POLICY_FILE:"
-          grep 'pattern="PNG"' "$POLICY_FILE" || echo "Nenhuma política PNG encontrada."
-        shell: bash
-
-      # Passo 4.2: Verificar Permissões do Diretório /tmp
-      - name: Check /tmp Permissions
-        run: |
-          ls -ld /tmp
+          sudo apt-get install -y fonts-dejavu-core fonts-dejavu-extra
         shell: bash
 
       # Passo 5: Decodificar e Criar Arquivos de Credenciais para Cada Canal

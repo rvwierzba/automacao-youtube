@@ -1,169 +1,40 @@
-# .github/workflows/main.yml
+# scripts/main.py
 
-name: Automação de Vídeos para YouTube
+import os
+import logging
+from moviepy.editor import TextClip
 
-on:
-  push:
-    branches:
-      - main
-  workflow_dispatch:
-  schedule:
-    - cron: '0 5 * * *'  # Diariamente às 05:00 UTC
-    - cron: '0 19 * * *' # Diariamente às 19:00 UTC
+def criar_video(texto, output_path='generated_videos'):
+    try:
+        logging.info(f"Iniciando a criação do vídeo para o texto: {texto}")
+        os.makedirs(output_path, exist_ok=True)
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
+        # Criar um clipe de texto simples usando o Pillow
+        clip = TextClip(
+            texto,
+            fontsize=70,
+            color='white',
+            size=(1280, 720),
+            bg_color='black',
+            method='caption',
+            font='DejaVu-Sans-Bold'  # Fonte disponível no ambiente
+        )
+        clip = clip.set_duration(10)  # Duração de 10 segundos
 
-    steps:
-      # Passo 1: Checkout do Código
-      - name: Checkout Repository
-        uses: actions/checkout@v3
+        # Salvar o vídeo
+        video_filename = f"video_{texto}.mp4"
+        video_full_path = os.path.join(output_path, video_filename)
+        clip.write_videofile(video_full_path, codec='libx264', audio=False)
 
-      # Passo 2: Configurar Python
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.9'
+        logging.info(f"Vídeo criado com sucesso: {video_full_path}")
+        return video_full_path
 
-      # Passo 3: Instalar Dependências Python
-      - name: Install Python Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-        shell: bash
+    except Exception as e:
+        logging.error(f"Erro na criação do vídeo: {e}")
+        raise
 
-      # Passo 4: Instalar e Configurar ImageMagick 7
-      - name: Install and Configure ImageMagick 7
-        run: |
-          set -x  # Ativar modo de depuração para exibir comandos
-          set +e  # Continuar mesmo se algum comando falhar
-
-          # Atualizar os repositórios e instalar dependências necessárias
-          sudo apt-get update
-          sudo apt-get install -y build-essential checkinstall
-          sudo apt-get install -y libjpeg-dev libpng-dev libtiff-dev libgif-dev libx11-dev libxml2-dev libfreetype6-dev liblcms2-dev libbz2-dev libzstd-dev
-
-          # Baixar a versão estável mais recente do ImageMagick 7
-          wget https://download.imagemagick.org/ImageMagick/download/ImageMagick.tar.gz
-          tar xvzf ImageMagick.tar.gz
-          cd ImageMagick-*
-
-          # Configurar, compilar e instalar o ImageMagick 7
-          ./configure --prefix=/usr/local --disable-static --enable-shared
-          make -j$(nproc)
-          sudo make install
-          sudo ldconfig /usr/local/lib
-
-          # Verificar a versão instalada
-          convert --version
-
-          # Identificar o caminho do policy.xml
-          POLICY_FILE=$(convert -list policy | grep -i "policy file" | awk '{print $4}')
-          echo "Caminho do policy.xml: $POLICY_FILE"
-
-          # Verificar se o policy.xml foi encontrado
-          if [ -z "$POLICY_FILE" ]; then
-            echo "Erro: policy.xml não encontrado."
-            exit 1
-          fi
-
-          # Fazer backup do arquivo policy.xml original
-          sudo cp "$POLICY_FILE" "${POLICY_FILE}.bak"
-
-          # Verificar se existem políticas restritivas para PNG
-          if grep -q 'pattern="PNG[^"]*"' "$POLICY_FILE"; then
-            # Comentar as linhas restritivas
-            sudo sed -i '/pattern="PNG[^"]*"/ s/^/<!-- /; /pattern="PNG[^"]*"/ s/$/ -->/' "$POLICY_FILE"
-            echo "Políticas restritivas para PNG comentadas."
-          else
-            echo "Nenhuma política restritiva para PNG encontrada."
-          fi
-
-          # Adicionar uma nova linha que permite leitura e escrita para todas as variações de PNG
-          echo '<policy domain="coder" rights="read|write" pattern="PNG*" />' | sudo tee -a "$POLICY_FILE"
-
-          # Verificar se a modificação foi aplicada
-          echo "Conteúdo atualizado de $POLICY_FILE:"
-          grep 'pattern="PNG"' "$POLICY_FILE" || echo "Nenhuma política PNG encontrada."
-
-          # Adicionar '|| true' para evitar que o passo falhe caso o grep não encontre correspondências
-          grep 'pattern="PNG"' "$POLICY_FILE" || echo "Nenhuma política PNG encontrada." || true
-
-          set -e  # Reativar a saída imediata em caso de erro
-        shell: bash
-
-      # Passo 4.1: Exibir o Conteúdo Atualizado do `policy.xml` para Depuração (Opcional)
-      - name: Display Updated ImageMagick Policy
-        run: |
-          POLICY_FILE=$(convert -list policy | grep -i "policy file" | awk '{print $4}')
-          echo "Conteúdo atualizado de $POLICY_FILE:"
-          grep 'pattern="PNG"' "$POLICY_FILE" || echo "Nenhuma política PNG encontrada."
-        shell: bash
-
-      # Passo 4.2: Verificar Permissões do Diretório /tmp
-      - name: Check /tmp Permissions
-        run: |
-          ls -ld /tmp
-        shell: bash
-
-      # Passo 5: Decodificar e Criar Arquivos de Credenciais para Cada Canal
-      - name: Decode Secrets and Create JSON Files
-        run: |
-          mkdir -p credentials
-          # fizzquirk
-          echo "${{ secrets.CLIENT_SECRET_FILE_fizzquirk }}" | base64 --decode > credentials/canal1_client_secret.json
-          echo "${{ secrets.TOKEN_FILE_fizzquirk }}" | base64 --decode > credentials/canal1_token.json
-
-          # Adicione mais canais conforme necessário
-        shell: bash
-
-      # Passo 5.1: Verificar os Arquivos Decodificados (Depuração)
-      - name: Verify Credentials Files
-        run: |
-          if [ -s credentials/canal1_client_secret.json ]; then
-            echo "client_secret.json foi decodificado com sucesso."
-          else
-            echo "Erro: client_secret.json está vazio ou não foi criado corretamente."
-            exit 1
-          fi
-
-          if [ -s credentials/canal1_token.json ]; then
-            echo "token.json foi decodificado com sucesso."
-          else
-            echo "Erro: token.json está vazio ou não foi criado corretamente."
-            exit 1
-          fi
-        shell: bash
-
-      # Passo 6: Configurar Variáveis de Ambiente
-      - name: Set Environment Variables
-        run: |
-          echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> $GITHUB_ENV
-          echo "YOUTUBE_API_KEY=${{ secrets.YOUTUBE_API_KEY }}" >> $GITHUB_ENV
-          echo "YOUTUBE_CHANNEL_ID=${{ secrets.YOUTUBE_CHANNEL_ID }}" >> $GITHUB_ENV
-        shell: bash
-
-      # Passo 7: Executar o Script Principal
-      - name: Run Main Script
-        run: |
-          python scripts/main.py
-        shell: bash
-
-      # Passo 8: Upload dos Vídeos Gerados (Opcional)
-      - name: Upload Generated Videos
-        uses: actions/upload-artifact@v3
-        with:
-          name: generated_videos
-          path: generated_videos/
-          if-no-files-found: warn
-          include-hidden-files: false
-
-      # Passo 9: Upload de Logs (Opcional)
-      - name: Upload Logs
-        uses: actions/upload-artifact@v3
-        with:
-          name: logs
-          path: logs/main.log
-          if-no-files-found: warn
-          include-hidden-files: false
+if __name__ == "__main__":
+    # Exemplo de uso
+    textos = ["Olá, Mundo!", "Automação de Vídeos para YouTube"]
+    for texto in textos:
+        criar_video(texto)

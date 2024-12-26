@@ -6,6 +6,7 @@ from moviepy.editor import TextClip
 
 def criar_video(texto, output_path='generated_videos'):
     try:
+        logging.basicConfig(level=logging.INFO)
         logging.info(f"Iniciando a criação do vídeo para o texto: {texto}")
         os.makedirs(output_path, exist_ok=True)
 
@@ -21,7 +22,7 @@ def criar_video(texto, output_path='generated_videos'):
         )
         clip = clip.set_duration(10)  # Duração de 10 segundos
 
-        # Salvar o vídeo
+        # Sanitizar o nome do arquivo para evitar espaços e caracteres especiais
         video_filename = f"video_{texto.replace(' ', '_')}.mp4"
         video_full_path = os.path.join(output_path, video_filename)
         clip.write_videofile(video_full_path, codec='libx264', audio=False)

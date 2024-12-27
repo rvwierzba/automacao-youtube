@@ -1,11 +1,13 @@
 name: Publicar Vídeos no YouTube
 
 on:
+  # Executa 2x ao dia (às 05:00 e 19:00 UTC)
   schedule:
     - cron: '0 5 * * *'
     - cron: '0 19 * * *'
+  # Permite execução manual
   workflow_dispatch:
-  # Se quiser rodar também a cada push, habilite:
+  # Caso queira que rode também em cada push no branch main, descomente:
   # push:
   #   branches: [ "main" ]
 
@@ -13,16 +15,15 @@ jobs:
   build_and_upload:
     runs-on: ubuntu-latest
 
-    # Variáveis de ambiente puxando SECRETS do repositório
-    # (Exemplo: GEMINI_API_KEY, YOUTUBE_API_KEY etc.)
+    # Variáveis de ambiente (exemplo) puxando SECRETS do repositório
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
       YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
+
+      # Ajuste abaixo se você tiver secrets que contenham JSON
       CLIENT_SECRET_FILE: ${{ secrets.CLIENT_SECRET_FILE_FIZZQUIRK }}
       TOKEN_FILE: ${{ secrets.TOKEN_FILE_FIZZQUIRK }}
-      # Obs: Você tem CLIENT_SECRET_FILE_FIZZQUIRK e TOKEN_FILE_FIZZQUIRK
-      # guardados, possivelmente contendo JSON. Ajuste conforme sua real lógica.
 
     steps:
       - name: Checkout do Código
@@ -35,14 +36,14 @@ jobs:
 
       - name: Install & Run
         run: |
-          # (Opcional) Desabilitar ImageMagick
+          # (Opcional) Desabilitar ImageMagick para evitar erro do 'convert'
           echo "IMAGEMAGICK_BINARY=/bin/false" >> $GITHUB_ENV
 
           # Cria e ativa venv
           python -m venv venv
           source venv/bin/activate
 
-          # Atualiza pip e instala dependências
+          # Instala pacotes
           pip install --upgrade pip
           pip install --no-cache-dir -r requirements.txt
 
@@ -50,14 +51,15 @@ jobs:
           echo ">>> pip freeze debug:"
           pip freeze
 
-          # 1) Gera Roteiro + Cria Vídeo
+          # 1) Gera Roteiro + Cria Vídeo (scripts/main.py)
           python scripts/main.py \
             --gemini-api "$GEMINI_API_KEY" \
             --youtube-channel "$YOUTUBE_CHANNEL_ID"
 
-          # 2) Sobe vídeo pro YouTube
+          # 2) Sobe vídeo pro YouTube (scripts/upload_youtube.py)
           python scripts/upload_youtube.py \
             --api-key "$YOUTUBE_API_KEY" \
             --channel "$YOUTUBE_CHANNEL_ID" \
             --client-secret-file "$CLIENT_SECRET_FILE" \
-            --token-file "$TOKEN_FILE"
+            --token-file "$TOKEN_FILE" \
+            --video-file "video_final.mp4"

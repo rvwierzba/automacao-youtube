@@ -2,7 +2,8 @@ name: Pipeline de Automação
 
 on:
   push:
-    branches: [ "main" ]
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
@@ -10,31 +11,26 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1) Baixar o código
-      - name: Checkout
+      # Passo 1) Baixar o código
+      - name: Checkout do Código
         uses: actions/checkout@v3
 
-      # 2) Definir Python
+      # Passo 2) Definir versão do Python
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.9"
 
-      # 3) Rodar seus scripts em UM único passo
-      - name: Install + Run
+      # Passo 3) Unificar instalação + execução em um só passo
+      - name: Install & Run
         run: |
-          # Desativar ImageMagick se ainda quiser forçar Pillow
+          # 1. Desativar ImageMagick
           echo "IMAGEMAGICK_BINARY=/bin/false" >> $GITHUB_ENV
 
-          # Executar seu script de instalação (que deve criar/ativar venv e instalar tudo)
-          # Por exemplo, se for um script .sh:
+          # 2. Executar SEU script de instalação (que deve criar/ativar venv e instalar dependências)
+          #   Ajuste conforme o nome real do seu script .sh ou .py
           bash scripts/install_dependencies.sh
 
-          # Se for um script Python (ex: install_deps.py):
-          # python scripts/install_deps.py
-
-          # Agora, no mesmo shell, rode seu script principal
-          # Exemplo: python scripts/main.py
+          # 3. Executar SEU script principal (assumindo que ele usa o venv ativado pelo script anterior)
           python scripts/main.py
-
         shell: bash

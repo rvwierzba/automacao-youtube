@@ -1,30 +1,54 @@
-name: Build e Executar Scripts
+name: Pipeline de Vídeos Automáticos
 
 on:
-  push:
-    branches: [ "main" ]
-  workflow_dispatch:  # <-- Isso habilita o botão "Run workflow" na página de Actions do repositório
+  # Executa automaticamente em dois horários (5h e 19h) todos os dias
+  schedule:
+    - cron: '0 5 * * *'   # 05:00 todo dia
+    - cron: '0 19 * * *'  # 19:00 todo dia
+
+  # Habilita botão "Run workflow" manualmente
+  workflow_dispatch:
+
+  # (Opcional) Poderia também manter "push" caso queira rodar no push:
+  # push:
+  #   branches: [ "main" ]
 
 jobs:
-  build:
+  build-and-upload:
     runs-on: ubuntu-latest
-    
+
     steps:
+      # 1) Fazer checkout do código
       - name: Checkout do Código
         uses: actions/checkout@v3
 
+      # 2) Instalar e configurar Python
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.9"
+          python-version: '3.9'
+          check-latest: false
+          update-environment: true  # Atualiza env na mesma sessão
 
+      # 3) Instalar dependências e executar script principal
       - name: Install & Run
         run: |
+          # Desabilitar ImageMagick (MoviePy tende a usar "convert")
           echo "IMAGEMAGICK_BINARY=/bin/false" >> $GITHUB_ENV
+
+          # Criar e ativar virtualenv
           python -m venv venv
           source venv/bin/activate
+
+          # Atualizar pip e instalar pacotes
           pip install --upgrade pip
           pip install --no-cache-dir -r requirements.txt
+
+          # (Opcional) Debug: Mostrar libs instaladas
           echo ">>> pip freeze debug:"
           pip freeze
-          python scripts/main.py
+
+          # Executar script principal (aqui supõe-se que ele gera 
+          # e faz upload do vídeo no YouTube em inglês com legendas)
+          python scripts/main.py --lang en --subtitles en
+          # ^ Se seu main.py tiver flags/parâmetros para definir idioma etc.

@@ -1,62 +1,63 @@
-name: Pipeline de Vídeos no YouTube
+name: Publicar Vídeos no YouTube
 
 on:
-  # Executa automaticamente em dois horários (05h e 19h UTC) todos os dias
   schedule:
     - cron: '0 5 * * *'
     - cron: '0 19 * * *'
-
-  # Habilita execução manual via Actions → 'Run workflow'
   workflow_dispatch:
-
-  # Se quiser rodar também a cada push na branch 'main', descomente:
+  # Se quiser rodar também a cada push, habilite:
   # push:
-  #   branches: [ 'main' ]
+  #   branches: [ "main" ]
 
 jobs:
-  build-and-upload:
+  build_and_upload:
     runs-on: ubuntu-latest
 
+    # Variáveis de ambiente puxando SECRETS do repositório
+    # (Exemplo: GEMINI_API_KEY, YOUTUBE_API_KEY etc.)
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+      YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
+      CLIENT_SECRET_FILE: ${{ secrets.CLIENT_SECRET_FILE_FIZZQUIRK }}
+      TOKEN_FILE: ${{ secrets.TOKEN_FILE_FIZZQUIRK }}
+      # Obs: Você tem CLIENT_SECRET_FILE_FIZZQUIRK e TOKEN_FILE_FIZZQUIRK
+      # guardados, possivelmente contendo JSON. Ajuste conforme sua real lógica.
+
     steps:
-      # 1) Fazer checkout do código
       - name: Checkout do Código
         uses: actions/checkout@v3
 
-      # 2) Configurar Python
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.9'
-          check-latest: false
-          update-environment: true
+          python-version: "3.9"
 
-      # 3) Instalar e rodar scripts (main.py e upload_youtube.py)
       - name: Install & Run
         run: |
           # (Opcional) Desabilitar ImageMagick
           echo "IMAGEMAGICK_BINARY=/bin/false" >> $GITHUB_ENV
 
-          # Criar e ativar virtualenv
+          # Cria e ativa venv
           python -m venv venv
           source venv/bin/activate
 
-          # Atualizar pip e instalar requirements
+          # Atualiza pip e instala dependências
           pip install --upgrade pip
           pip install --no-cache-dir -r requirements.txt
 
-          # (Opcional) Mostrar libs instaladas
+          # Debug: libs instaladas
           echo ">>> pip freeze debug:"
           pip freeze
 
-          # 1) Rodar script principal que gera o vídeo (em scripts/main.py)
-          python scripts/main.py
+          # 1) Gera Roteiro + Cria Vídeo
+          python scripts/main.py \
+            --gemini-api "$GEMINI_API_KEY" \
+            --youtube-channel "$YOUTUBE_CHANNEL_ID"
 
-          # 2) Rodar upload para o YouTube (em scripts/upload_youtube.py)
-          # Aqui você passa as variáveis de ambiente (Secrets) de acesso:
-          # Exemplo fictício: --client-secret, --api-key, etc.
+          # 2) Sobe vídeo pro YouTube
           python scripts/upload_youtube.py \
-            --client-secret "$YOUTUBE_CLIENT_SECRET" \
-            --api-key       "$YOUTUBE_API_KEY" 
-            # ou o que seu script pedir
-
-      # (Opcional) Se quiser publicar logs ou artefatos, pode adicionar passos aqui
+            --api-key "$YOUTUBE_API_KEY" \
+            --channel "$YOUTUBE_CHANNEL_ID" \
+            --client-secret-file "$CLIENT_SECRET_FILE" \
+            --token-file "$TOKEN_FILE"

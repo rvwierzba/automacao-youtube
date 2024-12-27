@@ -1,25 +1,13 @@
-name: Publicar Vídeos no YouTube
+name: Build & Upload
 
 on:
+  workflow_dispatch: {}  # Para rodar manual
   schedule:
-    # Executa todo dia às 05:00 UTC
-    - cron: '0 5 * * *'
-    # Executa todo dia às 19:00 UTC
-    - cron: '0 19 * * *'
-  workflow_dispatch:
+    - cron: "0 5,19 * * *"  # 5h e 19h diários
 
 jobs:
-  build_and_upload:
+  build:
     runs-on: ubuntu-latest
-
-    env:
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
-      YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
-      # “CLIENT_SECRET_FILE_FIZZQUIRK” e “TOKEN_FILE_FIZZQUIRK” contêm conteúdo JSON
-      CLIENT_SECRET_FILE: ${{ secrets.CLIENT_SECRET_FILE_FIZZQUIRK }}
-      TOKEN_FILE: ${{ secrets.TOKEN_FILE_FIZZQUIRK }}
-
     steps:
       - name: Checkout do Código
         uses: actions/checkout@v3
@@ -30,31 +18,27 @@ jobs:
           python-version: "3.9"
 
       - name: Install & Run
+        shell: bash
         run: |
-          # (Opcional) Desabilita ImageMagick no MoviePy
           echo "IMAGEMAGICK_BINARY=/bin/false" >> $GITHUB_ENV
 
-          # Cria e ativa venv
           python -m venv venv
           source venv/bin/activate
-
-          # Atualiza pip e instala dependências
           pip install --upgrade pip
           pip install --no-cache-dir -r requirements.txt
 
-          # Apenas debug das libs
           echo ">>> pip freeze debug:"
           pip freeze
 
-          # 1) Gera Texto + Audio + Legendas + Vídeo
-          python scripts/main.py \
-            --gemini-api "$GEMINI_API_KEY" \
-            --youtube-channel "$YOUTUBE_CHANNEL_ID"
+          # 1) Gera texto+áudio+vídeo
+          python scripts/main.py --gemini-api "${{ secrets.GEMINI_API_KEY }}" --youtube-channel "${{ secrets.YOUTUBE_CHANNEL_ID }}"
 
           # 2) Faz Upload no YouTube
           python scripts/upload_youtube.py \
-            --api-key "$YOUTUBE_API_KEY" \
-            --channel "$YOUTUBE_CHANNEL_ID" \
-            --client-secret-file "$CLIENT_SECRET_FILE" \
-            --token-file "$TOKEN_FILE" \
-            --video-file "video_final.mp4"
+            --video-file "video_final.mp4" \
+            --client-secret-file "${{ secrets.CLIENT_SECRET_FILE_FIZZQUIRK }}" \
+            --token-file "${{ secrets.TOKEN_FILE_FIZZQUIRK }}" \
+            --title "Curiosities Title" \
+            --description "Curious facts" \
+            --category "22" \
+            --tags curiosities facts

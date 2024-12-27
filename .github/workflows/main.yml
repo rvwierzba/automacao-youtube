@@ -21,16 +21,23 @@ jobs:
         with:
           python-version: "3.9"
 
-      # Passo 3) Unificar instalação + execução em um só passo
+      # Passo 3) Instalar dependências E rodar script no MESMO passo
       - name: Install & Run
         run: |
-          # 1. Desativar ImageMagick
+          # 1. Desativar ImageMagick (opcional, caso queira forçar uso do Pillow)
           echo "IMAGEMAGICK_BINARY=/bin/false" >> $GITHUB_ENV
 
-          # 2. Executar SEU script de instalação (que deve criar/ativar venv e instalar dependências)
-          #   Ajuste conforme o nome real do seu script .sh ou .py
-          bash scripts/install_dependencies.sh
+          # 2. Criar e ativar um ambiente virtual
+          python -m venv venv
+          source venv/bin/activate
 
-          # 3. Executar SEU script principal (assumindo que ele usa o venv ativado pelo script anterior)
+          # 3. Instalar dependências (requirements.txt deve estar na raiz do repo)
+          pip install --upgrade pip
+          pip install --no-cache-dir -r requirements.txt
+
+          # 4. (Opcional) Instalar manualmente se quiser garantir MoviePy/Pillow
+          # pip install --no-cache-dir moviepy pillow
+
+          # 5. Executar seu script principal
           python scripts/main.py
         shell: bash

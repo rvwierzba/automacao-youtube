@@ -1,8 +1,9 @@
 git+https://github.com/Zulko/moviepy@master#egg=moviepy
-Pillow>=9.0.0
-google-auth
-google-auth-oauthlib
-google-api-python-client
-python-dotenv
-gTTS
-nltk
+Pillow==10.4.0
+google-auth==2.37.0
+google-auth-oauthlib==1.2.1
+google-api-python-client==2.156.0
+python-dotenv==1.0.1
+gTTS==2.5.4
+nltk==3.9.1
+requests==2.32.3

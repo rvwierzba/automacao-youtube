@@ -1,48 +1,45 @@
-name: Pipeline de Automação
+name: build
 
 on:
   push:
     branches: [ "main" ]
-  workflow_dispatch:
+  pull_request:
+    branches: [ "main" ]
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
-      # 1) Baixa o código
-      - name: Checkout do Código
-        uses: actions/checkout@v3
+    # 1) Checkout do repositório
+    - name: Checkout do Código
+      uses: actions/checkout@v3
 
-      # 2) Define versão do Python
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.9"
+    # 2) Setup Python
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.9"
 
-      # 3) Cria venv, instala deps e executa script
-      - name: Install & Run
-        run: |
-          # (Opcional) Desativa ImageMagick para forçar o uso do Pillow:
-          echo "IMAGEMAGICK_BINARY=/bin/false" >> $GITHUB_ENV
+    # 3) Instala e Executa
+    - name: Install & Run
+      run: |
+        # (Opcional) Desabilitar ImageMagick, caso MoviePy tente invocar 'convert'
+        echo "IMAGEMAGICK_BINARY=/bin/false" >> $GITHUB_ENV
 
-          # Cria e ativa o venv no MESMO shell
-          python -m venv venv
-          source venv/bin/activate
+        # Criar e ativar venv
+        python -m venv venv
+        source venv/bin/activate
 
-          # Atualiza pip
-          pip install --upgrade pip
+        # Atualiza pip
+        pip install --upgrade pip
 
-          # 1. Instala pacotes do seu requirements.txt
-          # Certifique-se de que no seu requirements.txt você tenha:
-          # moviepy==1.0.3
-          # (e não moviepy>=1.0.3 ou 2.1.1).
-          pip install --no-cache-dir -r requirements.txt
+        # Instalar pacotes
+        pip install --no-cache-dir -r requirements.txt
 
-          # 2. (Extra) Confirma a versão do moviepy/Pillow instalados
-          echo ">>> pip freeze debug:"
-          pip freeze
+        # (Opcional) Mostrar libs instaladas
+        echo ">>> pip freeze debug:"
+        pip freeze
 
-          # 3. Executa o script principal
-          python scripts/main.py
-        shell: bash
+        # Rodar script principal
+        python scripts/main.py

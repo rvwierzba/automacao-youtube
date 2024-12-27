@@ -1,9 +1,8 @@
-name: Automação de Vídeos para YouTube
+name: Automação de Vídeos
 
 on:
   push:
-    branches:
-      - main
+    branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
@@ -11,64 +10,41 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout
-      - name: Checkout Repository
+      # 1) Checkout
+      - name: Checkout
         uses: actions/checkout@v3
 
-      # 2. Setup Python
+      # 2) Setup Python
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.9'
+          python-version: 3.9
 
-      # 3. Create Venv and Install Deps
-      - name: Install Dependencies
+      # 3) Criar e instalar no venv
+      - name: Create and Install in venv
         run: |
           python -m venv venv
-          source venv/bin/activate
-          pip install --upgrade pip
-          pip install --no-cache-dir -r requirements.txt
-          pip install --no-cache-dir moviepy
+          ./venv/bin/pip install --upgrade pip
+          ./venv/bin/pip install -r requirements.txt
+          ./venv/bin/pip install moviepy
         shell: bash
 
-      - name: List Installed Packages
-        run: |
-          source venv/bin/activate
-          pip list
+      # 4) Guardar o caminho do python do venv
+      - name: Save venv python path
+        run: echo "PYTHON_VENV=$(pwd)/venv/bin/python" >> $GITHUB_ENV
         shell: bash
 
-      - name: Check MoviePy Version
-        run: |
-          source venv/bin/activate
-          python -c "import moviepy; print(moviepy.__version__)"
+      # 5) (Opcional) Listar pacotes instalados
+      - name: List Packages
+        run: $PYTHON_VENV -m pip list
         shell: bash
 
-      # 4. Optional - Install Fonts for Pillow
-      - name: Install Fonts
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y fonts-dejavu-core fonts-dejavu-extra
+      # 6) Desabilitar ImageMagick
+      - name: Disable ImageMagick
+        run: echo "IMAGEMAGICK_BINARY=/bin/false" >> $GITHUB_ENV
         shell: bash
 
-      # 5. Decode Secrets (caso seja preciso)
-      - name: Decode Secrets
-        run: |
-          mkdir -p credentials
-          echo "${{ secrets.CLIENT_SECRET_FILE_FIZZQUIRK }}" | base64 --decode > credentials/client_secret.json
-          echo "${{ secrets.TOKEN_FILE_FIZZQUIRK }}" | base64 --decode > credentials/token.json
-          ls -lh credentials/
-        shell: bash
-
-      # 6. Environment Variables
-      - name: Set Env
-        run: |
-          echo "IMAGEMAGICK_BINARY=/bin/false" >> $GITHUB_ENV
-          # etc.
-        shell: bash
-
-      # 7. Run Script
+      # 7) Rodar script
       - name: Run Main Script
-        run: |
-          source venv/bin/activate
-          python scripts/main.py
+        run: $PYTHON_VENV scripts/main.py
         shell: bash

@@ -1,105 +1,89 @@
-#!/usr/bin/env python3
 import os
 import sys
-import json
-import time
 import argparse
-
+import google_auth_oauthlib.flow
 import googleapiclient.discovery
-import googleapiclient.http
-from google.oauth2.credentials import Credentials
-from google.auth.transport.requests import Request
+import googleapiclient.errors
 
-def load_channel_config(channel_name: str):
-    config_path = os.path.join(os.path.dirname(__file__), "channels_config.json")
-    if not os.path.exists(config_path):
-        print("ERRO: channels_config.json não encontrado!")
-        sys.exit(1)
-
-    with open(config_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    for c in data.get("channels", []):
-        if c["name"] == channel_name:
-            return c
-    return None
-
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--api-key", required=True, help="YouTube API Key")
-    parser.add_argument("--channel", required=True, help="Nome do canal (channels_config.json -> name)")
-    parser.add_argument("--client-secret-file", required=True, help="Conteúdo JSON do client_secret")
-    parser.add_argument("--token-file", required=True, help="Conteúdo JSON do token OAuth2")
-    parser.add_argument("--video-file", default="video_final.mp4", help="Arquivo de vídeo")
-    args = parser.parse_args()
-
-    # 1) Carregar config do canal
-    channel_config = load_channel_config(args.channel)
-    if not channel_config:
-        print(f"Canal '{args.channel}' não encontrado no channels_config.json")
-        sys.exit(1)
-
-    # 2) Salvar JSONs
-    with open("temp_client_secret.json", "w", encoding="utf-8") as f:
-        f.write(args.client_secret_file)
-    with open("temp_token.json", "w", encoding="utf-8") as f:
-        f.write(args.token_file)
-
-    # 3) Credenciais
+def upload_video(video_path, title, description, category_id, tags,
+                 client_secret_file, token_file):
+    """
+    Realiza upload do video para o YouTube usando google-api-python-client.
+    """
+    # Carrega credenciais do token
     creds = None
-    scopes = ["https://www.googleapis.com/auth/youtube.upload"]
-    try:
-        creds = Credentials.from_authorized_user_file("temp_token.json", scopes)
-    except Exception as e:
-        print("Erro ao carregar temp_token.json:", e)
+    if os.path.exists(token_file):
+        from google.oauth2.credentials import Credentials
+        creds = Credentials.from_authorized_user_file(token_file, ["https://www.googleapis.com/auth/youtube.upload"])
 
+    # Se não existe token ou é inválido, cria fluxo
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            print("Token inválido ou expirado e sem refresh_token.")
-            sys.exit(1)
+            flow = google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file(
+                client_secret_file,
+                scopes=["https://www.googleapis.com/auth/youtube.upload"]
+            )
+            creds = flow.run_console()
+        # Salva credenciais
+        with open(token_file, 'w') as token:
+            token.write(creds.to_json())
 
     youtube = googleapiclient.discovery.build("youtube", "v3", credentials=creds)
 
-    # 4) Montar snippet do vídeo
-    # Title com timestamp
-    title_str = channel_config["title"] + " - " + time.strftime("%Y-%m-%d %H:%M:%S")
-    desc_str = channel_config["description"]
-    tags = channel_config["keywords"].split(",")
-
-    body = {
+    # Monta metadata
+    request_body = {
         "snippet": {
-            "title": title_str,
-            "description": desc_str,
+            "title": title,
+            "description": description,
             "tags": tags,
-            "categoryId": "28"  # ex: Science & Technology
+            "categoryId": category_id
         },
         "status": {
-            "privacyStatus": "private"  # ou "public"
+            "privacyStatus": "public"
         }
     }
 
-    print(f"Subindo vídeo: {args.video_file}")
-    media_body = googleapiclient.http.MediaFileUpload(args.video_file, resumable=True)
-
+    media = googleapiclient.http.MediaFileUpload(video_path, chunksize=-1, resumable=True)
     request = youtube.videos().insert(
         part="snippet,status",
-        body=body,
-        media_body=media_body
+        body=request_body,
+        media_body=media
     )
 
     response = None
     while response is None:
         status, response = request.next_chunk()
         if status:
-            print(f"Progresso do upload: {int(status.progress() * 100)}%")
+            print(f"Uploading... {int(status.progress() * 100)}%")
 
     if "id" in response:
-        video_id = response["id"]
-        print(f"Vídeo publicado com sucesso: https://youtu.be/{video_id}")
+        print(f"Video uploaded. Video ID = {response['id']}")
     else:
-        print("Erro ao publicar vídeo:", response)
-        sys.exit(1)
+        print("Upload error:", response)
+        raise RuntimeError(f"Upload failed: {response}")
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--video-file", required=True)
+    parser.add_argument("--title", default="Meu Vídeo")
+    parser.add_argument("--description", default="Vídeo curioso!")
+    parser.add_argument("--category", default="22")  # 22=People & Blogs
+    parser.add_argument("--tags", nargs="*", default=["curiosities","facts"])
+    parser.add_argument("--client-secret-file", required=True)
+    parser.add_argument("--token-file", required=True)
+    args = parser.parse_args()
+
+    upload_video(
+        video_path=args.video_file,
+        title=args.title,
+        description=args.description,
+        category_id=args.category,
+        tags=args.tags,
+        client_secret_file=args.client_secret_file,
+        token_file=args.token_file
+    )
 
 if __name__ == "__main__":
     main()

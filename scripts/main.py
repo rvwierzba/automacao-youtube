@@ -1,51 +1,42 @@
-# main.py
+# scripts/main.py
 import sys
-from moviepy.editor import TextClip, CompositeVideoClip
+from moviepy.editor import VideoClip, TextClip, CompositeVideoClip
 
-
-def criar_video(texto: str, saida="video_final.mp4"):
+def criar_video(texto: str, saida="video_final.mp4", duracao=5):
     """
-    Cria um vídeo simples de 5 segundos,
-    exibindo o 'texto' ao centro.
-    Utiliza 'method="caption"' para
-    não depender do ImageMagick/convert.
+    Cria um vídeo simples com 'texto' na tela.
+    Usa 'method="caption"' para não depender do 'convert' (ImageMagick).
     """
     try:
-        # Força a renderização via PIL/Pillow (method='caption'),
-        # evitando a chamada de 'convert' do ImageMagick.
+        # Gera um TextClip usando apenas Pillow, sem chamar o 'convert'
         clip_texto = TextClip(
             txt=texto,
             fontsize=70,
             color='white',
-            # Você pode alterar o bg_color, tamanho etc. livremente.
-            size=(1280, 720),
-            bg_color='black',
-            method='caption'  # <-- IMPORTANTE!
-        ).set_duration(5)
+            size=(1280, 720),   # Tamanho do quadro
+            bg_color='black',  # Cor de fundo
+            method='caption'   # <--- FUNDAMENTAL: evita o ImageMagick
+        ).set_duration(duracao)
 
-        # Se quiser centralizar ou animar, você pode setar .set_position("center")
+        # Caso queira centralizar, pode usar .set_position("center")
         # clip_texto = clip_texto.set_position("center")
 
-        # Criamos um clip final
-        final_clip = CompositeVideoClip([clip_texto])
-
-        # Renderiza o vídeo em MP4
-        final_clip.write_videofile(saida, fps=24, codec="libx264", audio=False)
+        video_final = CompositeVideoClip([clip_texto], size=(1280, 720))
+        # Renderiza (codec libx264 e sem áudio, por ex.)
+        video_final.write_videofile(saida, fps=24, codec='libx264', audio=False)
         print(f"Vídeo '{saida}' criado com sucesso!")
     except Exception as e:
         print(f"Erro na criação do vídeo: {e}")
         raise
 
-
 def main():
-    # Exemplo: se você quiser pegar o texto via argv:
+    # Exemplo: se quiser texto via argv
     if len(sys.argv) > 1:
         texto = " ".join(sys.argv[1:])
     else:
         texto = "Olá, Mundo!"
 
-    criar_video(texto, "video_final.mp4")
-
+    criar_video(texto)
 
 if __name__ == "__main__":
     main()

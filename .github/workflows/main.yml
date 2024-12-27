@@ -10,31 +10,31 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Passo 1: Baixar o Código
+      # Passo 1) Baixar o código
       - name: Checkout
         uses: actions/checkout@v3
 
-      # Passo 2: Definir Python 3.9
+      # Passo 2) Definir versão do Python
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.9"
 
-      # Passo 3: Criar venv, instalar dependências e rodar script em um só passo
+      # Passo 3) Criar ambiente virtual, instalar dependências e rodar o script
       - name: Install & Run
         run: |
-          # Criar e ativar ambiente virtual
+          # 1. Criar e ativar ambiente virtual
           python -m venv venv
           source venv/bin/activate
 
-          # Instalar dependências
+          # 2. Instalar dependências
           pip install --upgrade pip
           pip install --no-cache-dir -r requirements.txt
           pip install --no-cache-dir moviepy
 
-          # Desativar o ImageMagick
+          # 3. Desativar ImageMagick, forçando uso do Pillow para texto
           echo "IMAGEMAGICK_BINARY=/bin/false" >> $GITHUB_ENV
 
-          # Executar o script principal
+          # 4. Executar seu script principal
           python scripts/main.py
         shell: bash

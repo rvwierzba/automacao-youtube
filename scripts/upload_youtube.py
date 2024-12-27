@@ -4,19 +4,20 @@ import argparse
 import google_auth_oauthlib.flow
 import googleapiclient.discovery
 import googleapiclient.errors
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
+import json
 
 def upload_video(video_path, title, description, category_id, tags,
                  client_secret_file, token_file):
-    """
-    Realiza upload do video para o YouTube usando google-api-python-client.
-    """
-    # Carrega credenciais do token
+    """Realiza upload para o YouTube via google-api-python-client."""
     creds = None
     if os.path.exists(token_file):
-        from google.oauth2.credentials import Credentials
-        creds = Credentials.from_authorized_user_file(token_file, ["https://www.googleapis.com/auth/youtube.upload"])
+        creds = Credentials.from_authorized_user_file(
+            token_file,
+            ["https://www.googleapis.com/auth/youtube.upload"]
+        )
 
-    # Se não existe token ou é inválido, cria fluxo
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
@@ -26,14 +27,12 @@ def upload_video(video_path, title, description, category_id, tags,
                 scopes=["https://www.googleapis.com/auth/youtube.upload"]
             )
             creds = flow.run_console()
-        # Salva credenciais
         with open(token_file, 'w') as token:
             token.write(creds.to_json())
 
     youtube = googleapiclient.discovery.build("youtube", "v3", credentials=creds)
 
-    # Monta metadata
-    request_body = {
+    body = {
         "snippet": {
             "title": title,
             "description": description,
@@ -44,11 +43,10 @@ def upload_video(video_path, title, description, category_id, tags,
             "privacyStatus": "public"
         }
     }
-
-    media = googleapiclient.http.MediaFileUpload(video_path, chunksize=-1, resumable=True)
+    media = googleapiclient.http.MediaFileUpload(video_path, resumable=True)
     request = youtube.videos().insert(
         part="snippet,status",
-        body=request_body,
+        body=body,
         media_body=media
     )
 
@@ -56,21 +54,20 @@ def upload_video(video_path, title, description, category_id, tags,
     while response is None:
         status, response = request.next_chunk()
         if status:
-            print(f"Uploading... {int(status.progress() * 100)}%")
+            print(f"Uploading... {int(status.progress()*100)}%")
 
     if "id" in response:
-        print(f"Video uploaded. Video ID = {response['id']}")
+        print("Upload realizado! Video ID:", response["id"])
     else:
-        print("Upload error:", response)
-        raise RuntimeError(f"Upload failed: {response}")
+        print("Falha no upload. Resposta:", response)
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--video-file", required=True)
     parser.add_argument("--title", default="Meu Vídeo")
-    parser.add_argument("--description", default="Vídeo curioso!")
-    parser.add_argument("--category", default="22")  # 22=People & Blogs
-    parser.add_argument("--tags", nargs="*", default=["curiosities","facts"])
+    parser.add_argument("--description", default="Vídeo gerado automaticamente")
+    parser.add_argument("--category", default="22")
+    parser.add_argument("--tags", nargs="*", default=["automation","curiosities"])
     parser.add_argument("--client-secret-file", required=True)
     parser.add_argument("--token-file", required=True)
     args = parser.parse_args()

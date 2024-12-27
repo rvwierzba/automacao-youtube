@@ -5,7 +5,7 @@ import logging
 
 # Teste de importação
 try:
-    from moviepy.editor import TextClip
+    from moviepy import TextClip
 except ImportError as e:
     logging.error("MoviePy não está instalado.")
     raise e

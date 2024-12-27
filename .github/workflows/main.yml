@@ -1,9 +1,9 @@
 name: Build & Upload
 
 on:
-  workflow_dispatch: {}  # Para rodar manual
+  workflow_dispatch: {}   # Permite rodar manualmente
   schedule:
-    - cron: "0 5,19 * * *"  # 5h e 19h diários
+    - cron: "0 5,19 * * *"  # Roda duas vezes ao dia (5h e 19h)
 
 jobs:
   build:
@@ -30,8 +30,10 @@ jobs:
           echo ">>> pip freeze debug:"
           pip freeze
 
-          # 1) Gera texto+áudio+vídeo
-          python scripts/main.py --gemini-api "${{ secrets.GEMINI_API_KEY }}" --youtube-channel "${{ secrets.YOUTUBE_CHANNEL_ID }}"
+          # 1) Gera vídeo
+          python scripts/main.py \
+            --gemini-api "${{ secrets.GEMINI_API_KEY }}" \
+            --youtube-channel "${{ secrets.YOUTUBE_CHANNEL_ID }}"
 
           # 2) Faz Upload no YouTube
           python scripts/upload_youtube.py \

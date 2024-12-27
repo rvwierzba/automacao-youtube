@@ -1,75 +1,83 @@
 #!/usr/bin/env python3
-
 import os
 import sys
 import json
-import argparse
 import time
+import argparse
 
+import googleapiclient.discovery
+import googleapiclient.http
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
-from googleapiclient.discovery import build
 
-def load_channel_config(name: str):
-    with open(os.path.join(os.path.dirname(__file__), "channels_config.json"), "r", encoding="utf-8") as f:
+def load_channel_config(channel_name: str):
+    """
+    Carrega o JSON channels_config.json e acha o canal
+    com name == channel_name
+    """
+    config_path = os.path.join(os.path.dirname(__file__), "channels_config.json")
+    if not os.path.exists(config_path):
+        print("ERRO: channels_config.json não encontrado em scripts/")
+        sys.exit(1)
+
+    with open(config_path, "r", encoding="utf-8") as f:
         data = json.load(f)
-    for c in data["channels"]:
-        if c["name"] == name:
+    for c in data.get("channels", []):
+        if c["name"] == channel_name:
             return c
     return None
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--api-key", required=True, help="YouTube API Key")
-    parser.add_argument("--channel", required=True, help="Channel name or ID (ex: fizzquirk)")
-    parser.add_argument("--client-secret-file", required=True, help="Conteúdo ou path do client secret JSON")
-    parser.add_argument("--token-file", required=True, help="Conteúdo ou path do token JSON")
-    parser.add_argument("--video-file", default="video_final.mp4", help="Caminho do vídeo gerado")
+    parser.add_argument("--api-key", required=True, help="YouTube API Key (não usado no insert, mas se precisar)")
+    parser.add_argument("--channel", required=True, help="Nome do canal (deve bater com 'name' em channels_config.json)")
+    parser.add_argument("--client-secret-file", required=True, help="Conteúdo (em string) do client_secret JSON")
+    parser.add_argument("--token-file", required=True, help="Conteúdo (em string) do token JSON")
+    parser.add_argument("--video-file", default="video_final.mp4", help="Arquivo do vídeo a enviar")
     args = parser.parse_args()
 
     channel_config = load_channel_config(args.channel)
     if not channel_config:
-        print(f"Canal {args.channel} não encontrado em channels_config.json!")
+        print(f"Canal '{args.channel}' não encontrado no channels_config.json")
         sys.exit(1)
 
-    # Caso o --client-secret-file e --token-file SEJAM O CONTEÚDO do JSON,
-    # você pode salvar em disco e usar. Exemplo:
+    # Salva localmente os JSONs vindos dos secrets
     with open("temp_client_secret.json", "w", encoding="utf-8") as f:
         f.write(args.client_secret_file)
     with open("temp_token.json", "w", encoding="utf-8") as f:
         f.write(args.token_file)
 
-    # Então, credencia-se com googleapiclient
+    # Carrega credenciais
     creds = None
-    # Carrega o token
+    scopes = ["https://www.googleapis.com/auth/youtube.upload"]
     try:
-        creds = Credentials.from_authorized_user_file("temp_token.json", ["https://www.googleapis.com/auth/youtube.upload"])
-    except:
-        pass
+        creds = Credentials.from_authorized_user_file("temp_token.json", scopes)
+    except Exception as e:
+        print("Erro ao carregar temp_token.json:", e)
 
     if not creds or not creds.valid:
+        # Tenta refresh se tiver refresh_token
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            print("Token inválido ou expirado. Necessária nova autenticação.")
-            # Ou busque outro fluxo de OAuth2 aqui.
+            print("Token inválido ou expirado. Precisamos de um refresh_token válido.")
             sys.exit(1)
 
-    youtube = build("youtube", "v3", credentials=creds)
+    youtube = googleapiclient.discovery.build("youtube", "v3", credentials=creds)
 
-    # Título, descrição etc. do canal, do channels_config.json
+    # Monta snippet do vídeo (titulo, desc, tags) usando channels_config
     title_str = channel_config["title"] + " " + time.strftime("%Y-%m-%d %H:%M:%S")
     desc_str = channel_config["description"]
-    tags_str = channel_config["keywords"].split(",")
+    tags = channel_config["keywords"].split(",")
 
-    print(f"Enviando vídeo '{args.video_file}' para canal '{channel_config['name']}'...")
+    print(f"Subindo vídeo '{args.video_file}' para canal '{channel_config['name']}'...")
 
-    request_body = {
+    body = {
         "snippet": {
             "title": title_str,
             "description": desc_str,
-            "tags": tags_str,
-            "categoryId": "28"  # Exemplo "Science & Technology"
+            "tags": tags,
+            "categoryId": "28"  # Exemplo: Science & Technology
         },
         "status": {
             "privacyStatus": "private"  # ou "public", "unlisted"
@@ -80,19 +88,21 @@ def main():
 
     request = youtube.videos().insert(
         part="snippet,status",
-        body=request_body,
+        body=body,
         media_body=media_body
     )
+
     response = None
     while response is None:
         status, response = request.next_chunk()
         if status:
-            print(f"Upload progress: {int(status.progress()*100)}%")
+            print(f"Progresso do upload: {int(status.progress() * 100)}%")
 
     if "id" in response:
-        print(f"Vídeo enviado com sucesso: https://youtube.com/watch?v={response['id']}")
+        video_id = response["id"]
+        print(f"Vídeo enviado com sucesso: https://youtu.be/{video_id}")
     else:
-        print("Erro ao enviar vídeo:", response)
+        print("Erro ao enviar vídeo, retorno:", response)
         sys.exit(1)
 
 

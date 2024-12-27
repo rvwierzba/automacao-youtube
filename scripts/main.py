@@ -2,71 +2,68 @@ import os
 import sys
 import argparse
 
-# IMPORTAÇÕES PONTUAIS do MoviePy:
-#   - "moviepy.video.VideoClip" para `TextClip` e `ImageClip`
-#   - "moviepy.video.io.VideoFileClip" para `VideoFileClip`
-#   - "moviepy.audio.io.AudioFileClip" para `AudioFileClip`
-#   - "moviepy.video.compositing.CompositeVideoClip" para `CompositeVideoClip`
-
-from moviepy.video.VideoClip import TextClip, ImageClip
-from moviepy.video.io.VideoFileClip import VideoFileClip
+# Evite importar "from moviepy import ..."
+# Em vez disso, importe de submódulos específicos:
 from moviepy.audio.io.AudioFileClip import AudioFileClip
+from moviepy.video.io.VideoFileClip import VideoFileClip
+from moviepy.video.VideoClip import ImageClip, TextClip
 from moviepy.video.compositing.CompositeVideoClip import CompositeVideoClip
 
-import gtts  # p/ sintetizar áudio
-import nltk  # p/ manipular texto, se precisar
-# etc.
+import gtts
 
-def criar_video(texto: str, video_out: str = "video_final.mp4"):
-    """
-    Exemplo simples que cria um vídeo a partir de texto,
-    gera áudio com gTTS e compõe um clip final.
-    """
-    # 1) Gera áudio TTS (em inglês, por ex.)
-    tts = gtts.gTTS(texto, lang="en")
+def criar_video(texto: str, saida: str = "video_final.mp4"):
+    """Exemplo simples que gera TTS, compõe com ImageClip e salva vídeo."""
+    # 1) Gera áudio TTS
+    tts = gtts.gTTS(texto, lang="en")  # inglês, por exemplo
     tts.save("temp_audio.mp3")
 
-    # 2) Carrega áudio
-    audio_clip = AudioFileClip("temp_audio.mp3")
+    audio = AudioFileClip("temp_audio.mp3")
 
-    # 3) Gera um ImageClip fixo de fundo (exemplo)
-    #    Duração = duração do áudio
-    bg_clip = ImageClip("fundo.jpg").set_duration(audio_clip.duration)
+    # 2) Cria ImageClip de fundo (ex.: fundo.jpg)
+    if not os.path.exists("fundo.jpg"):
+        # se não existir, gera um de cor sólida
+        import numpy as np
+        import moviepy.editor as mpe
+        w, h = 1280, 720
+        cor = (50, 50, 200)  # BGR
+        arr = np.zeros((h, w, 3), dtype=np.uint8)
+        arr[:, :] = cor
+        # salva temporário
+        from PIL import Image
+        Image.fromarray(arr).save("fundo.jpg")
 
-    # 4) Cria um TextClip simples. Se "TextClip" da dev do MoviePy
-    #    ainda existir. Caso contrário, ajustará c/ outro approach.
-    txt_clip = TextClip(texto,
-                        fontsize=48,
-                        color="white",
-                        font="DejaVu-Sans",
-                        size=bg_clip.size,
-                        method="caption"  # se suportado
-                       ).set_duration(audio_clip.duration)
+    bg = ImageClip("fundo.jpg").set_duration(audio.duration)
 
-    # 5) Composição final
+    # 3) Cria um TextClip (se ainda existir `TextClip` no dev)
+    txt_clip = TextClip(
+        txt=texto,
+        fontsize=50,
+        color='white',
+        size=bg.size,
+        method='caption'
+    ).set_duration(audio.duration)
+
     final = CompositeVideoClip([
-        bg_clip,
+        bg, 
         txt_clip.set_position("center")
-    ]).set_audio(audio_clip)
+    ], size=bg.size).set_audio(audio)
 
-    # 6) Renderiza
-    final.write_videofile(video_out, fps=24, codec="libx264", audio_codec="aac")
+    final.write_videofile(saida, fps=24, codec="libx264", audio_codec="aac")
 
-    # Limpa temporários
+    # cleanup
     os.remove("temp_audio.mp3")
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--gemini-api", required=False, help="Exemplo de chave do Gemini")
-    parser.add_argument("--youtube-channel", required=False, help="Exemplo de canal do YouTube")
+    parser.add_argument("--gemini-api", help="Exemplo de chave do Gemini")
+    parser.add_argument("--youtube-channel", help="Exemplo do canal do YouTube")
     args = parser.parse_args()
 
-    # Exemplo: texto fixo (ou você busca do Gemini, etc.)
-    texto_final = "Hello, world! Some interesting facts..."
+    # Texto fixo de exemplo
+    texto_exemplo = "Hello from MoviePy - no SubtitlesClip! Enjoy."
 
-    # Gera o vídeo final
-    criar_video(texto_final, video_out="video_final.mp4")
-    print("Vídeo 'video_final.mp4' criado com sucesso.")
+    criar_video(texto_exemplo, "video_final.mp4")
+    print("Vídeo gerado: video_final.mp4")
 
 if __name__ == "__main__":
     main()

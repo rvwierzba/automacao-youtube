@@ -1,27 +1,22 @@
 name: Publicar Vídeos no YouTube
 
 on:
-  # Executa 2x ao dia (às 05:00 e 19:00 UTC)
   schedule:
+    # Executa todo dia às 05:00 UTC
     - cron: '0 5 * * *'
+    # Executa todo dia às 19:00 UTC
     - cron: '0 19 * * *'
-  # Permite execução manual
   workflow_dispatch:
-  # Caso queira que rode também em cada push no branch main, descomente:
-  # push:
-  #   branches: [ "main" ]
 
 jobs:
   build_and_upload:
     runs-on: ubuntu-latest
 
-    # Variáveis de ambiente (exemplo) puxando SECRETS do repositório
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
       YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
-
-      # Ajuste abaixo se você tiver secrets que contenham JSON
+      # “CLIENT_SECRET_FILE_FIZZQUIRK” e “TOKEN_FILE_FIZZQUIRK” contêm conteúdo JSON
       CLIENT_SECRET_FILE: ${{ secrets.CLIENT_SECRET_FILE_FIZZQUIRK }}
       TOKEN_FILE: ${{ secrets.TOKEN_FILE_FIZZQUIRK }}
 
@@ -36,27 +31,27 @@ jobs:
 
       - name: Install & Run
         run: |
-          # (Opcional) Desabilitar ImageMagick para evitar erro do 'convert'
+          # (Opcional) Desabilita ImageMagick no MoviePy
           echo "IMAGEMAGICK_BINARY=/bin/false" >> $GITHUB_ENV
 
           # Cria e ativa venv
           python -m venv venv
           source venv/bin/activate
 
-          # Instala pacotes
+          # Atualiza pip e instala dependências
           pip install --upgrade pip
           pip install --no-cache-dir -r requirements.txt
 
-          # Debug: libs instaladas
+          # Apenas debug das libs
           echo ">>> pip freeze debug:"
           pip freeze
 
-          # 1) Gera Roteiro + Cria Vídeo (scripts/main.py)
+          # 1) Gera Texto + Audio + Legendas + Vídeo
           python scripts/main.py \
             --gemini-api "$GEMINI_API_KEY" \
             --youtube-channel "$YOUTUBE_CHANNEL_ID"
 
-          # 2) Sobe vídeo pro YouTube (scripts/upload_youtube.py)
+          # 2) Faz Upload no YouTube
           python scripts/upload_youtube.py \
             --api-key "$YOUTUBE_API_KEY" \
             --channel "$YOUTUBE_CHANNEL_ID" \

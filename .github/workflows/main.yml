@@ -2,8 +2,7 @@ name: Pipeline de Automação
 
 on:
   push:
-    branches:
-      - main
+    branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
@@ -11,33 +10,39 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Passo 1) Baixar o código
+      # 1) Baixa o código
       - name: Checkout do Código
         uses: actions/checkout@v3
 
-      # Passo 2) Definir versão do Python
+      # 2) Define versão do Python
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.9"
 
-      # Passo 3) Instalar dependências E rodar script no MESMO passo
+      # 3) Cria venv, instala deps e executa script
       - name: Install & Run
         run: |
-          # 1. Desativar ImageMagick (opcional, caso queira forçar uso do Pillow)
+          # (Opcional) Desativa ImageMagick para forçar o uso do Pillow:
           echo "IMAGEMAGICK_BINARY=/bin/false" >> $GITHUB_ENV
 
-          # 2. Criar e ativar um ambiente virtual
+          # Cria e ativa o venv no MESMO shell
           python -m venv venv
           source venv/bin/activate
 
-          # 3. Instalar dependências (requirements.txt deve estar na raiz do repo)
+          # Atualiza pip
           pip install --upgrade pip
+
+          # 1. Instala pacotes do seu requirements.txt
+          # Certifique-se de que no seu requirements.txt você tenha:
+          # moviepy==1.0.3
+          # (e não moviepy>=1.0.3 ou 2.1.1).
           pip install --no-cache-dir -r requirements.txt
 
-          # 4. (Opcional) Instalar manualmente se quiser garantir MoviePy/Pillow
-          # pip install --no-cache-dir moviepy pillow
+          # 2. (Extra) Confirma a versão do moviepy/Pillow instalados
+          echo ">>> pip freeze debug:"
+          pip freeze
 
-          # 5. Executar seu script principal
+          # 3. Executa o script principal
           python scripts/main.py
         shell: bash

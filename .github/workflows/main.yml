@@ -1,4 +1,4 @@
-name: Automação de Vídeos
+name: Pipeline de Automação
 
 on:
   push:
@@ -10,41 +10,31 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1) Checkout
+      # Passo 1: Baixar o Código
       - name: Checkout
         uses: actions/checkout@v3
 
-      # 2) Setup Python
+      # Passo 2: Definir Python 3.9
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
-          python-version: 3.9
+          python-version: "3.9"
 
-      # 3) Criar e instalar no venv
-      - name: Create and Install in venv
+      # Passo 3: Criar venv, instalar dependências e rodar script em um só passo
+      - name: Install & Run
         run: |
+          # Criar e ativar ambiente virtual
           python -m venv venv
-          ./venv/bin/pip install --upgrade pip
-          ./venv/bin/pip install -r requirements.txt
-          ./venv/bin/pip install moviepy
-        shell: bash
+          source venv/bin/activate
 
-      # 4) Guardar o caminho do python do venv
-      - name: Save venv python path
-        run: echo "PYTHON_VENV=$(pwd)/venv/bin/python" >> $GITHUB_ENV
-        shell: bash
+          # Instalar dependências
+          pip install --upgrade pip
+          pip install --no-cache-dir -r requirements.txt
+          pip install --no-cache-dir moviepy
 
-      # 5) (Opcional) Listar pacotes instalados
-      - name: List Packages
-        run: $PYTHON_VENV -m pip list
-        shell: bash
+          # Desativar o ImageMagick
+          echo "IMAGEMAGICK_BINARY=/bin/false" >> $GITHUB_ENV
 
-      # 6) Desabilitar ImageMagick
-      - name: Disable ImageMagick
-        run: echo "IMAGEMAGICK_BINARY=/bin/false" >> $GITHUB_ENV
-        shell: bash
-
-      # 7) Rodar script
-      - name: Run Main Script
-        run: $PYTHON_VENV scripts/main.py
+          # Executar o script principal
+          python scripts/main.py
         shell: bash

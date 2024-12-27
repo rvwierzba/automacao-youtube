@@ -1,45 +1,45 @@
-name: build
+name: Build e Executar Scripts
 
 on:
   push:
     branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+  # ou use 'workflow_dispatch:' se quiser disparar manualmente
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest  # ou ubuntu-22.04 se preferir
 
     steps:
-    # 1) Checkout do repositório
-    - name: Checkout do Código
-      uses: actions/checkout@v3
+      # 1. Checkout do código
+      - name: Checkout do Código
+        uses: actions/checkout@v3
 
-    # 2) Setup Python
-    - name: Setup Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: "3.9"
+      # 2. Setup Python 3.9
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.9"
 
-    # 3) Instala e Executa
-    - name: Install & Run
-      run: |
-        # (Opcional) Desabilitar ImageMagick, caso MoviePy tente invocar 'convert'
-        echo "IMAGEMAGICK_BINARY=/bin/false" >> $GITHUB_ENV
+      # 3. Instalar Dependências e Executar Script
+      - name: Install & Run
+        shell: bash
+        run: |
+          # (Opcional) Desabilitar binário 'convert' do ImageMagick
+          echo "IMAGEMAGICK_BINARY=/bin/false" >> $GITHUB_ENV
 
-        # Criar e ativar venv
-        python -m venv venv
-        source venv/bin/activate
+          # Criar e ativar venv
+          python -m venv venv
+          source venv/bin/activate
 
-        # Atualiza pip
-        pip install --upgrade pip
+          # Atualiza pip
+          pip install --upgrade pip
 
-        # Instalar pacotes
-        pip install --no-cache-dir -r requirements.txt
+          # Instalar dependências do requirements.txt
+          pip install --no-cache-dir -r requirements.txt
 
-        # (Opcional) Mostrar libs instaladas
-        echo ">>> pip freeze debug:"
-        pip freeze
+          # Mostrar libs instaladas (debug)
+          echo ">>> pip freeze debug:"
+          pip freeze
 
-        # Rodar script principal
-        python scripts/main.py
+          # Executar seu script principal
+          python scripts/main.py

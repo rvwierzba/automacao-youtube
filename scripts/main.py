@@ -7,7 +7,7 @@ import argparse
 import requests
 
 from gtts import gTTS
-from moviepy.editor import (AudioFileClip, VideoFileClip, ImageClip,
+from moviepy import (AudioFileClip, VideoFileClip, ImageClip,
                             CompositeVideoClip, SubtitlesClip,
                             TextClip, concatenate_videoclips)
 from moviepy.video.tools.subtitles import SubtitlesClip

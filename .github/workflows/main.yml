@@ -3,43 +3,28 @@ name: Build e Executar Scripts
 on:
   push:
     branches: [ "main" ]
-  # ou use 'workflow_dispatch:' se quiser disparar manualmente
+  workflow_dispatch:  # <-- Isso habilita o botão "Run workflow" na página de Actions do repositório
 
 jobs:
   build:
-    runs-on: ubuntu-latest  # ou ubuntu-22.04 se preferir
-
+    runs-on: ubuntu-latest
+    
     steps:
-      # 1. Checkout do código
       - name: Checkout do Código
         uses: actions/checkout@v3
 
-      # 2. Setup Python 3.9
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.9"
 
-      # 3. Instalar Dependências e Executar Script
       - name: Install & Run
-        shell: bash
         run: |
-          # (Opcional) Desabilitar binário 'convert' do ImageMagick
           echo "IMAGEMAGICK_BINARY=/bin/false" >> $GITHUB_ENV
-
-          # Criar e ativar venv
           python -m venv venv
           source venv/bin/activate
-
-          # Atualiza pip
           pip install --upgrade pip
-
-          # Instalar dependências do requirements.txt
           pip install --no-cache-dir -r requirements.txt
-
-          # Mostrar libs instaladas (debug)
           echo ">>> pip freeze debug:"
           pip freeze
-
-          # Executar seu script principal
           python scripts/main.py

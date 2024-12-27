@@ -1,17 +1,17 @@
-name: Pipeline de Vídeos Automáticos
+name: Pipeline de Vídeos no YouTube
 
 on:
-  # Executa automaticamente em dois horários (5h e 19h) todos os dias
+  # Executa automaticamente em dois horários (05h e 19h UTC) todos os dias
   schedule:
-    - cron: '0 5 * * *'   # 05:00 todo dia
-    - cron: '0 19 * * *'  # 19:00 todo dia
+    - cron: '0 5 * * *'
+    - cron: '0 19 * * *'
 
-  # Habilita botão "Run workflow" manualmente
+  # Habilita execução manual via Actions → 'Run workflow'
   workflow_dispatch:
 
-  # (Opcional) Poderia também manter "push" caso queira rodar no push:
+  # Se quiser rodar também a cada push na branch 'main', descomente:
   # push:
-  #   branches: [ "main" ]
+  #   branches: [ 'main' ]
 
 jobs:
   build-and-upload:
@@ -22,33 +22,41 @@ jobs:
       - name: Checkout do Código
         uses: actions/checkout@v3
 
-      # 2) Instalar e configurar Python
+      # 2) Configurar Python
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
           check-latest: false
-          update-environment: true  # Atualiza env na mesma sessão
+          update-environment: true
 
-      # 3) Instalar dependências e executar script principal
+      # 3) Instalar e rodar scripts (main.py e upload_youtube.py)
       - name: Install & Run
         run: |
-          # Desabilitar ImageMagick (MoviePy tende a usar "convert")
+          # (Opcional) Desabilitar ImageMagick
           echo "IMAGEMAGICK_BINARY=/bin/false" >> $GITHUB_ENV
 
           # Criar e ativar virtualenv
           python -m venv venv
           source venv/bin/activate
 
-          # Atualizar pip e instalar pacotes
+          # Atualizar pip e instalar requirements
           pip install --upgrade pip
           pip install --no-cache-dir -r requirements.txt
 
-          # (Opcional) Debug: Mostrar libs instaladas
+          # (Opcional) Mostrar libs instaladas
           echo ">>> pip freeze debug:"
           pip freeze
 
-          # Executar script principal (aqui supõe-se que ele gera 
-          # e faz upload do vídeo no YouTube em inglês com legendas)
-          python scripts/main.py --lang en --subtitles en
-          # ^ Se seu main.py tiver flags/parâmetros para definir idioma etc.
+          # 1) Rodar script principal que gera o vídeo (em scripts/main.py)
+          python scripts/main.py
+
+          # 2) Rodar upload para o YouTube (em scripts/upload_youtube.py)
+          # Aqui você passa as variáveis de ambiente (Secrets) de acesso:
+          # Exemplo fictício: --client-secret, --api-key, etc.
+          python scripts/upload_youtube.py \
+            --client-secret "$YOUTUBE_CLIENT_SECRET" \
+            --api-key       "$YOUTUBE_API_KEY" 
+            # ou o que seu script pedir
+
+      # (Opcional) Se quiser publicar logs ou artefatos, pode adicionar passos aqui

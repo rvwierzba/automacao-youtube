@@ -1,42 +1,64 @@
-# scripts/main.py
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 import sys
-from moviepy.editor import VideoClip, TextClip, CompositeVideoClip
+import moviepy.editor as mp
+from moviepy.video.VideoClip import TextClip
 
-def criar_video(texto: str, saida="video_final.mp4", duracao=5):
+
+def criar_video(texto: str, output: str = "video_final.mp4"):
     """
-    Cria um vídeo simples com 'texto' na tela.
-    Usa 'method="caption"' para não depender do 'convert' (ImageMagick).
+    Cria um vídeo de 5 segundos com um texto centralizado na tela,
+    usando 'method="caption"' para evitar invocar o ImageMagick 'convert'.
     """
-    try:
-        # Gera um TextClip usando apenas Pillow, sem chamar o 'convert'
-        clip_texto = TextClip(
-            txt=texto,
-            fontsize=70,
-            color='white',
-            size=(1280, 720),   # Tamanho do quadro
-            bg_color='black',  # Cor de fundo
-            method='caption'   # <--- FUNDAMENTAL: evita o ImageMagick
-        ).set_duration(duracao)
+    # Tamanho e cores:
+    largura, altura = 1280, 720
+    cor_fundo = "black"
+    cor_texto = "white"
 
-        # Caso queira centralizar, pode usar .set_position("center")
-        # clip_texto = clip_texto.set_position("center")
+    # Cria o clip de texto usando método 'caption':
+    # Observação: não coloque 'font=' ou algo que exija fallback (ex: fontes exóticas).
+    clip_texto = TextClip(
+        txt=texto,
+        fontsize=70,
+        color=cor_texto,
+        size=(largura, altura),
+        bg_color=cor_fundo,
+        method="caption",       # <--- FORÇANDO o Pillow e não o 'convert'
+        align="center"
+    ).set_duration(5)
 
-        video_final = CompositeVideoClip([clip_texto], size=(1280, 720))
-        # Renderiza (codec libx264 e sem áudio, por ex.)
-        video_final.write_videofile(saida, fps=24, codec='libx264', audio=False)
-        print(f"Vídeo '{saida}' criado com sucesso!")
-    except Exception as e:
-        print(f"Erro na criação do vídeo: {e}")
-        raise
+    # Se quiser, podemos animar. Aqui deixamos fixo por 5s.
+    # Monta o vídeo final (pode ser só o clip_texto).
+    video_final = mp.CompositeVideoClip([clip_texto])
+
+    # Renderiza em MP4 (h.264):
+    video_final.write_videofile(
+        output,
+        fps=30,
+        codec="libx264",
+        threads=0,  # usa todos os cores
+        audio=False
+    )
+
 
 def main():
-    # Exemplo: se quiser texto via argv
+    """
+    Função principal do script.
+    """
+    # Pode pegar texto de sys.argv, ou fixo:
     if len(sys.argv) > 1:
         texto = " ".join(sys.argv[1:])
     else:
         texto = "Olá, Mundo!"
 
-    criar_video(texto)
+    print(f"INFO: Iniciando a criação do vídeo para o texto: {texto}")
+    try:
+        criar_video(texto)
+        print("Vídeo criado com sucesso!")
+    except Exception as e:
+        print(f"Erro na criação do vídeo: {e}")
+
 
 if __name__ == "__main__":
     main()

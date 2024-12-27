@@ -1,57 +1,62 @@
 #!/usr/bin/env python3
-
 import os
 import sys
 import json
 import requests
+
 from moviepy.editor import TextClip, CompositeVideoClip
 
-def chamar_gemini_api(gemini_api_key: str, tema: str = "Random Curiosities"):
+def chamar_gemini_api(gemini_api_key: str, tema: str = "Curious Facts about the World"):
     """
-    Exemplo fictício: chama a API do Gemini para gerar um texto.
-    Substitua pela chamada real da sua API.
+    Exemplo de chamada à API do Gemini.
+    Ajuste a rota e payload conforme necessário.
     """
-    # Exemplo: GET ou POST, dependendo da API
-    url = "https://api.gemini.com/v1/generate"  # fictício
+    url = "https://api.gemini.com/v1/generate"  # ROTA FICTÍCIA
     headers = {
         "Authorization": f"Bearer {gemini_api_key}",
         "Content-Type": "application/json",
     }
     payload = {
-        "prompt": f"Me dê um roteiro em inglês sobre curiosidades do tema: {tema}"
+        "prompt": f"Generate an English script about: {tema}"
     }
     resp = requests.post(url, headers=headers, json=payload)
     resp.raise_for_status()
     data = resp.json()
-    return data.get("text", "No content returned from Gemini")
+    # Ajuste a extração do campo real
+    return data.get("text", "No text returned from Gemini API")
 
 def criar_video(texto: str, output_file: str = "video_final.mp4"):
     """
-    Exemplo super simples com moviepy.
-    Substitua a lógica de criar slides/clipes do jeito que preferir.
+    Cria um vídeo simples com moviepy contendo apenas o texto.
+    Ajuste para criar cenas, incluir imagens, áudio etc.
     """
-    # Exemplo: faz um TextClip e salva
-    clip = TextClip(texto, fontsize=70, color='white', size=(1280, 720), method='caption')
-    clip = clip.set_duration(10)  # 10s
-    # Salva
-    clip.write_videofile(output_file, fps=24)
+    # Tenta criar um TextClip simples
+    clip_texto = TextClip(txt=texto,
+                          fontsize=70,
+                          color='white',
+                          size=(1280,720),
+                          method='caption')  # 'caption' ou 'label'
+    clip_texto = clip_texto.set_duration(10)  # 10s
+
+    # Salvar
+    clip_texto.write_videofile(output_file, fps=24)
 
 def main():
-    # Pega args
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--gemini-api", required=True, help="Gemini API Key")
-    parser.add_argument("--youtube-channel", required=False, help="Channel ID", default="fizzquirk")
+    parser.add_argument("--gemini-api", required=True, help="Chave da API Gemini")
+    parser.add_argument("--youtube-channel", required=False, default="fizzquirk", help="Nome/ID do canal")
     args = parser.parse_args()
 
-    gemini_api_key = args.gemini_api
-    # 1) Gera texto
-    texto_roteiro = chamar_gemini_api(gemini_api_key, tema="facts about the world")
+    gemini_key = args.gemini_api
 
-    # 2) Cria vídeo com esse texto
-    criar_video(texto_roteiro, "video_final.mp4")
+    # 1) Gera texto com a (fictícia) API do Gemini
+    texto_gerado = chamar_gemini_api(gemini_key, tema="Incredible Curiosities")
 
-    print("Vídeo gerado: video_final.mp4")
+    # 2) Cria o vídeo .mp4
+    criar_video(texto_gerado, "video_final.mp4")
+
+    print(">>> Vídeo gerado com sucesso: video_final.mp4")
 
 if __name__ == "__main__":
     main()

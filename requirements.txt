@@ -1,4 +1,4 @@
-moviepy>=1.0.3
+moviepy==1.0.3
 Pillow>=9.0.0
 google-auth
 google-auth-oauthlib

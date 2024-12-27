@@ -11,13 +11,9 @@ from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 
 def load_channel_config(channel_name: str):
-    """
-    Carrega o JSON channels_config.json e acha o canal
-    com name == channel_name
-    """
     config_path = os.path.join(os.path.dirname(__file__), "channels_config.json")
     if not os.path.exists(config_path):
-        print("ERRO: channels_config.json não encontrado em scripts/")
+        print("ERRO: channels_config.json não encontrado!")
         sys.exit(1)
 
     with open(config_path, "r", encoding="utf-8") as f:
@@ -29,25 +25,26 @@ def load_channel_config(channel_name: str):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--api-key", required=True, help="YouTube API Key (não usado no insert, mas se precisar)")
-    parser.add_argument("--channel", required=True, help="Nome do canal (deve bater com 'name' em channels_config.json)")
-    parser.add_argument("--client-secret-file", required=True, help="Conteúdo (em string) do client_secret JSON")
-    parser.add_argument("--token-file", required=True, help="Conteúdo (em string) do token JSON")
-    parser.add_argument("--video-file", default="video_final.mp4", help="Arquivo do vídeo a enviar")
+    parser.add_argument("--api-key", required=True, help="YouTube API Key")
+    parser.add_argument("--channel", required=True, help="Nome do canal (channels_config.json -> name)")
+    parser.add_argument("--client-secret-file", required=True, help="Conteúdo JSON do client_secret")
+    parser.add_argument("--token-file", required=True, help="Conteúdo JSON do token OAuth2")
+    parser.add_argument("--video-file", default="video_final.mp4", help="Arquivo de vídeo")
     args = parser.parse_args()
 
+    # 1) Carregar config do canal
     channel_config = load_channel_config(args.channel)
     if not channel_config:
         print(f"Canal '{args.channel}' não encontrado no channels_config.json")
         sys.exit(1)
 
-    # Salva localmente os JSONs vindos dos secrets
+    # 2) Salvar JSONs
     with open("temp_client_secret.json", "w", encoding="utf-8") as f:
         f.write(args.client_secret_file)
     with open("temp_token.json", "w", encoding="utf-8") as f:
         f.write(args.token_file)
 
-    # Carrega credenciais
+    # 3) Credenciais
     creds = None
     scopes = ["https://www.googleapis.com/auth/youtube.upload"]
     try:
@@ -56,34 +53,33 @@ def main():
         print("Erro ao carregar temp_token.json:", e)
 
     if not creds or not creds.valid:
-        # Tenta refresh se tiver refresh_token
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            print("Token inválido ou expirado. Precisamos de um refresh_token válido.")
+            print("Token inválido ou expirado e sem refresh_token.")
             sys.exit(1)
 
     youtube = googleapiclient.discovery.build("youtube", "v3", credentials=creds)
 
-    # Monta snippet do vídeo (titulo, desc, tags) usando channels_config
-    title_str = channel_config["title"] + " " + time.strftime("%Y-%m-%d %H:%M:%S")
+    # 4) Montar snippet do vídeo
+    # Title com timestamp
+    title_str = channel_config["title"] + " - " + time.strftime("%Y-%m-%d %H:%M:%S")
     desc_str = channel_config["description"]
     tags = channel_config["keywords"].split(",")
-
-    print(f"Subindo vídeo '{args.video_file}' para canal '{channel_config['name']}'...")
 
     body = {
         "snippet": {
             "title": title_str,
             "description": desc_str,
             "tags": tags,
-            "categoryId": "28"  # Exemplo: Science & Technology
+            "categoryId": "28"  # ex: Science & Technology
         },
         "status": {
-            "privacyStatus": "private"  # ou "public", "unlisted"
+            "privacyStatus": "private"  # ou "public"
         }
     }
 
+    print(f"Subindo vídeo: {args.video_file}")
     media_body = googleapiclient.http.MediaFileUpload(args.video_file, resumable=True)
 
     request = youtube.videos().insert(
@@ -100,11 +96,10 @@ def main():
 
     if "id" in response:
         video_id = response["id"]
-        print(f"Vídeo enviado com sucesso: https://youtu.be/{video_id}")
+        print(f"Vídeo publicado com sucesso: https://youtu.be/{video_id}")
     else:
-        print("Erro ao enviar vídeo, retorno:", response)
+        print("Erro ao publicar vídeo:", response)
         sys.exit(1)
-
 
 if __name__ == "__main__":
     main()

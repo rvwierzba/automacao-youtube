@@ -1,41 +1,32 @@
-# scripts/main.py (exemplo sem bg.jpg)
+# scripts/main.py
 
 import sys
 import argparse
-from moviepy.editor import (
-    AudioFileClip,
-    ColorClip   # A cor sólida no lugar de ImageClip
-)
+from moviepy.editor import AudioFileClip, ColorClip
 
 def criar_video(texto, nome_output):
-    # Carrega áudio (ajuste o nome do arquivo .mp3 se necessário)
+    # Carrega áudio (mude "audio.mp3" se você tiver outro nome de arquivo de áudio)
     audio_clip = AudioFileClip("audio.mp3")
 
-    # Cria um fundo colorido (ex.: preto) com o tamanho e duração desejados
-    # Ajuste (1280, 720) ou outra resolução que quiser
-    video_bg = ColorClip(size=(1280, 720), color=(0, 0, 0))
-    video_bg = video_bg.set_duration(audio_clip.duration)
+    # Cria um fundo colorido (preto) no tamanho e duração do áudio
+    # Se quiser outra cor, troque (0, 0, 0) por (R, G, B) como (255, 255, 255) para branco etc.
+    fundo = ColorClip(size=(1280, 720), color=(0, 0, 0)).set_duration(audio_clip.duration)
 
-    # Se quiser escrever algo em "texto", aqui poderia adicionar legendas, etc.
-    # mas vamos manter simples, só fundo + áudio.
+    # Atribui o áudio ao fundo
+    final_clip = fundo.set_audio(audio_clip)
 
-    # Define o áudio do background
-    final_clip = video_bg.set_audio(audio_clip)
-
-    # Exporta como .mp4 (codificação padrão)
+    # Salva em MP4
     final_clip.write_videofile(nome_output, fps=30)
 
 def main():
-    # Exemplo de parsing de argumentos
     parser = argparse.ArgumentParser()
-    parser.add_argument("--gemini-api", help="Chave da API Gemini", required=True)
-    parser.add_argument("--youtube-channel", help="Canal do YouTube", required=True)
+    parser.add_argument("--gemini-api", required=True, help="Chave da API Gemini")
+    parser.add_argument("--youtube-channel", required=True, help="Canal do YouTube")
     args = parser.parse_args()
 
-    # Exemplo de texto
-    texto_exemplo = "Exemplo de texto gerado pela API Gemini..."
+    # Exemplo de texto, só para simular
+    texto_exemplo = "Texto gerado pela API Gemini..."
 
-    # Chama função
     criar_video(texto_exemplo, "video_final.mp4")
 
 if __name__ == "__main__":

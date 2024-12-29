@@ -1,43 +1,40 @@
 #!/usr/bin/env python3
 import argparse
 import os
+
 from gtts import gTTS
-import moviepy as mp  # <-- Importa a nova moviepy
-# Em algumas versões, pode ser import moviepy.video.VideoClip ou similar
+
+# Hipotético: se "editor.py" não existe, então tente submódulos
+# Mude de acordo com a nova pasta:
+from moviepy.audio.io.AudioFileClip import AudioFileClip
+from moviepy.video.VideoClip import ImageClip
 
 def criar_video(texto, saida_video):
-    """
-    Cria um vídeo simples a partir de:
-      - Texto (para gerar áudio TTS)
-      - ImageClip + AudioClip
-    """
-    audio_temp = "temp_audio.mp3"
-    tts = gTTS(texto, lang="en")
-    tts.save(audio_temp)
+    temp_audio = "temp_audio.mp3"
+    tts = gTTS(texto, lang="pt")
+    tts.save(temp_audio)
 
-    # Carrega o áudio.
-    audio_clip = mp.AudioFileClip(audio_temp)
+    audio_clip = AudioFileClip(temp_audio)
 
-    # Cria um ImageClip com a duração do áudio.
-    bg = mp.ImageClip("bg.jpg", duration=audio_clip.duration)
+    # Exemplo: se "ImageClip(...).set_duration(...)" não existir,
+    # faça conforme a nova API. Ex:
+    bg = ImageClip("bg.jpg")  # se set_duration não existir, tente: ImageClip("bg.jpg", duration=audio_clip.duration)
 
-    # Vincula o áudio ao clip de imagem.
-    bg = bg.set_audio(audio_clip)
+    # "set_audio" pode mudar também...
+    final_video = bg.set_audio(audio_clip)
+    final_video.write_videofile(saida_video, fps=24)
 
-    # Exporta o vídeo final
-    bg.write_videofile(saida_video, fps=24)
-
-    # Limpa temp
-    if os.path.exists(audio_temp):
-        os.remove(audio_temp)
+    os.remove(temp_audio)
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--gemini-api", required=True, help="Chave Gemini")
-    parser.add_argument("--youtube-channel", required=True, help="Canal do YouTube")
+    parser.add_argument("--gemini-api", required=True)
+    parser.add_argument("--youtube-channel", required=True)
     args = parser.parse_args()
 
-    texto_exemplo = f"Olá, aqui é um exemplo com {args.gemini_api} no canal {args.youtube_channel}."
+    texto_exemplo = (
+        f"Exemplo de texto com {args.gemini_api}, no canal: {args.youtube_channel}"
+    )
     criar_video(texto_exemplo, "video_final.mp4")
 
 if __name__ == "__main__":

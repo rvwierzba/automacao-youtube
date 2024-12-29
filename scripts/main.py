@@ -1,68 +1,48 @@
-import os
-import sys
+#!/usr/bin/env python3
 import argparse
-import gtts
+from moviepy.editor import AudioFileClip, ImageClip
 
-# Em vez de "from moviepy import ...", importe partes específicas:
-from moviepy.audio.io.AudioFileClip import AudioFileClip
-from moviepy.video.io.VideoFileClip import VideoFileClip
-from moviepy.video.VideoClip import ImageClip, TextClip
-from moviepy.video.compositing.CompositeVideoClip import CompositeVideoClip
+def criar_video(texto, saida):
+    # Exemplo: gera arquivo de áudio a partir do texto
+    from gtts import gTTS
+    from pathlib import Path
 
+    temp_audio = "temp_audio.mp3"
+    tts = gTTS(texto, lang="en")
+    tts.save(temp_audio)
 
-def criar_video(texto: str, saida: str = "video_final.mp4"):
-    """Exemplo simples que gera TTS (em inglês), compõe com ImageClip e salva vídeo."""
-    # 1) TTS
-    tts = gtts.gTTS(text=texto, lang="en")
-    tts.save("temp_audio.mp3")
-    audio_clip = AudioFileClip("temp_audio.mp3")
+    # Carrega o áudio
+    audio_clip = AudioFileClip(temp_audio)
 
-    # 2) Cria background
-    if not os.path.exists("bg.jpg"):
-        # gera um BG colorido
-        import numpy as np
-        from PIL import Image
+    # ANTES (incompatível com MoviePy master):
+    #   bg = ImageClip("bg.jpg").set_duration(audio_clip.duration)
 
-        w, h = 1280, 720
-        arr = np.zeros((h, w, 3), dtype=np.uint8)
-        arr[:] = (50, 50, 200)  # BGR(ish)
-        Image.fromarray(arr).save("bg.jpg")
+    # AGORA (duas possibilidades):
 
+    # (opção 1) já passa a duration no construtor
     bg = ImageClip("bg.jpg", duration=audio_clip.duration)
+    # (opção 2) ou em duas etapas:
+    #   bg = ImageClip("bg.jpg")
+    #   bg.duration = audio_clip.duration
 
+    # Se quiser adicionar áudio no background
+    bg = bg.set_audio(audio_clip)
 
-    # 3) TextClip
-    textclip = TextClip(
-        txt=texto,
-        fontsize=48,
-        color='white',
-        method='caption',
-        size=bg.size
-    ).set_duration(audio_clip.duration)
+    # Renderiza o vídeo
+    bg.write_videofile(saida, fps=24)
 
-    final = CompositeVideoClip([
-        bg,
-        textclip.set_position("center")
-    ], size=bg.size).set_audio(audio_clip)
-
-    final.write_videofile(saida, fps=24, codec="libx264", audio_codec="aac")
-    audio_clip.close()
-
-    # Cleanup
-    if os.path.exists("temp_audio.mp3"):
-        os.remove("temp_audio.mp3")
-
+    # Remove arquivo temporário
+    Path(temp_audio).unlink(missing_ok=True)
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--gemini-api", help="Exemplo de chave do Gemini")
-    parser.add_argument("--youtube-channel", help="Exemplo do canal do YouTube")
+    parser.add_argument("--gemini-api", required=True)
+    parser.add_argument("--youtube-channel", required=True)
     args = parser.parse_args()
 
-    texto_exemplo = "Hello from MoviePy! No SubtitlesClip import, so no error now."
+    # Exemplo de texto fixo, só pra fins de teste
+    texto_exemplo = f"Teste... Gemini: {args.gemini_api}, canal: {args.youtube_channel}"
     criar_video(texto_exemplo, "video_final.mp4")
-    print("Vídeo gerado com sucesso:", "video_final.mp4")
-
 
 if __name__ == "__main__":
     main()

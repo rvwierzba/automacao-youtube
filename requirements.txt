@@ -1,4 +1,4 @@
-git+https://github.com/Zulko/moviepy@master#egg=moviepy
+moviepy==1.0.3
 Pillow==10.4.0
 google-auth==2.37.0
 google-auth-oauthlib==1.2.1

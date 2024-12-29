@@ -1,47 +1,51 @@
 #!/usr/bin/env python3
 import argparse
+from gtts import gTTS
 from moviepy.editor import AudioFileClip, ImageClip
+from pathlib import Path
 
-def criar_video(texto, saida):
-    # Exemplo: gera arquivo de áudio a partir do texto
-    from gtts import gTTS
-    from pathlib import Path
+def criar_video(texto, saida_video):
+    """
+    Cria um vídeo simples a partir de:
+      - Texto (para gerar áudio TTS com gTTS)
+      - Imagem de fundo (bg.jpg) + áudio
+    """
 
-    temp_audio = "temp_audio.mp3"
+    # 1) Gera um arquivo de áudio temporário usando gTTS
+    audio_temp = "temp_audio.mp3"
     tts = gTTS(texto, lang="en")
-    tts.save(temp_audio)
+    tts.save(audio_temp)
 
-    # Carrega o áudio
-    audio_clip = AudioFileClip(temp_audio)
+    # 2) Carrega o áudio
+    audio_clip = AudioFileClip(audio_temp)
 
-    # ANTES (incompatível com MoviePy master):
-    #   bg = ImageClip("bg.jpg").set_duration(audio_clip.duration)
-
-    # AGORA (duas possibilidades):
-
-    # (opção 1) já passa a duration no construtor
+    # 3) Cria um ImageClip com a duração igual à do áudio
+    # Em vez de .set_duration(), use o parâmetro 'duration='
     bg = ImageClip("bg.jpg", duration=audio_clip.duration)
-    # (opção 2) ou em duas etapas:
-    #   bg = ImageClip("bg.jpg")
-    #   bg.duration = audio_clip.duration
 
-    # Se quiser adicionar áudio no background
+    # 4) Vincula o áudio ao clip de imagem
     bg = bg.set_audio(audio_clip)
 
-    # Renderiza o vídeo
-    bg.write_videofile(saida, fps=24)
+    # 5) Exporta o vídeo final
+    bg.write_videofile(saida_video, fps=24)
 
-    # Remove arquivo temporário
-    Path(temp_audio).unlink(missing_ok=True)
+    # 6) Remove o arquivo temporário de áudio
+    Path(audio_temp).unlink(missing_ok=True)
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--gemini-api", required=True)
-    parser.add_argument("--youtube-channel", required=True)
+    parser.add_argument("--gemini-api", required=True, help="Seu Gemini API Key")
+    parser.add_argument("--youtube-channel", required=True, help="ID do canal no YouTube")
     args = parser.parse_args()
 
-    # Exemplo de texto fixo, só pra fins de teste
-    texto_exemplo = f"Teste... Gemini: {args.gemini_api}, canal: {args.youtube_channel}"
+    # Exemplo de texto que poderia vir da sua API Gemini ou algo similar
+    texto_exemplo = (
+        f"Olá! Este é um teste simples. "
+        f"Gemini key: {args.gemini_api}, canal: {args.youtube_channel}. "
+        f"Obrigado por assistir!"
+    )
+
+    # Chama a função para criar o vídeo
     criar_video(texto_exemplo, "video_final.mp4")
 
 if __name__ == "__main__":

@@ -28,7 +28,8 @@ def criar_video(texto: str, saida: str = "video_final.mp4"):
         arr[:] = (50, 50, 200)  # BGR(ish)
         Image.fromarray(arr).save("bg.jpg")
 
-    bg = ImageClip("bg.jpg").set_duration(audio_clip.duration)
+    bg = ImageClip("bg.jpg", duration=audio_clip.duration)
+
 
     # 3) TextClip
     textclip = TextClip(

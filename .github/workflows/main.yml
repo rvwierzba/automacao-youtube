@@ -1,9 +1,11 @@
 name: Automação YouTube
 
+# Agendamento para 5 AM e 7 PM UTC diariamente
 on:
-  push:
-    branches:
-      - main  # Ajuste para a branch que você deseja monitorar
+  schedule:
+    - cron: '0 5 * * *'   # 5:00 AM UTC
+    - cron: '0 19 * * *'  # 7:00 PM UTC
+  workflow_dispatch:      # Permitir execução manual, se necessário
 
 jobs:
   build:
@@ -17,7 +19,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.9'  # Certifique-se de que a versão coincide com a do seu ambiente local
+        python-version: '3.9'  # Ajuste conforme necessário
 
     # Passo 3: Instalar Dependências
     - name: Install Dependencies
@@ -27,15 +29,24 @@ jobs:
         pip install --upgrade pip
         pip install --no-cache-dir -r requirements.txt
 
-    # Passo 4: Criar Arquivo client_secret.json a partir do Segredo
+    # Passo 4: Criar Arquivo client_secret.json a partir do Segredo Base64
     - name: Create Client Secret File
       run: |
-        echo -n "${{ secrets.CLIENT_SECRET_FILE_FIZZQUIRK }}" > client_secret.json
+        echo "${{ secrets.CLIENT_SECRET_FILE_FIZZQUIRK }}" | base64 --decode > client_secret.json
 
-    # Passo 5: Criar Arquivo token.json a partir do Segredo
+    # Passo 5: Criar Arquivo token.json a partir do Segredo Base64
     - name: Create Token File
       run: |
-        echo -n "${{ secrets.TOKEN_FILE_FIZZQUIRK }}" > token.json
+        echo "${{ secrets.TOKEN_FILE_FIZZQUIRK }}" | base64 --decode > token.json
+
+    # Passo Opcional: Verificar os Arquivos Criados (Para Depuração)
+    # **Remova este passo após verificar que os arquivos estão corretos**
+    - name: Verify JSON Files
+      run: |
+        echo "Verificando os primeiros 10 caracteres de client_secret.json:"
+        head -c 10 client_secret.json
+        echo "Verificando os primeiros 10 caracteres de token.json:"
+        head -c 10 token.json
 
     # Passo 6: Gerar e Fazer Upload do Vídeo
     - name: Generate and Upload Video
@@ -62,5 +73,4 @@ jobs:
       env:
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
-        CLIENT_SECRET_FILE_FIZZQUIRK: ${{ secrets.CLIENT_SECRET_FILE_FIZZQUIRK }}
-        TOKEN_FILE_FIZZQUIRK: ${{ secrets.TOKEN_FILE_FIZZQUIRK }}
+        YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}

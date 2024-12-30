@@ -3,27 +3,44 @@ name: Automação YouTube
 on:
   push:
     branches:
-      - main
+      - main  # Ajuste para a branch que você deseja monitorar
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
+    # Passo 1: Checkout do Repositório
     - uses: actions/checkout@v3
 
+    # Passo 2: Configurar o Python
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.9'
+        python-version: '3.9'  # Certifique-se de que a versão coincide com a do seu ambiente local
 
-    - name: Install & Run
+    # Passo 3: Instalar Dependências
+    - name: Install Dependencies
       run: |
         python -m venv venv
         source venv/bin/activate
         pip install --upgrade pip
         pip install --no-cache-dir -r requirements.txt
 
+    # Passo 4: Criar Arquivo client_secret.json a partir do Segredo
+    - name: Create Client Secret File
+      run: |
+        echo -n "${{ secrets.CLIENT_SECRET_FILE_FIZZQUIRK }}" > client_secret.json
+
+    # Passo 5: Criar Arquivo token.json a partir do Segredo
+    - name: Create Token File
+      run: |
+        echo -n "${{ secrets.TOKEN_FILE_FIZZQUIRK }}" > token.json
+
+    # Passo 6: Gerar e Fazer Upload do Vídeo
+    - name: Generate and Upload Video
+      run: |
+        source venv/bin/activate
         echo ">>> pip freeze debug:"
         pip freeze
 
@@ -35,12 +52,12 @@ jobs:
         # 2) Faz Upload no YouTube
         python scripts/upload_youtube.py \
           --video-file "video_final.mp4" \
-          --client-secret-file "$CLIENT_SECRET_FILE_FIZZQUIRK" \
-          --token-file "$TOKEN_FILE_FIZZQUIRK" \
+          --client-secret-file "client_secret.json" \
+          --token-file "token.json" \
           --title "Curiosities Title" \
           --description "Curious facts" \
           --category "22" \
-          --tags curiosities facts
+          --tags "curiosities,facts"
 
       env:
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}

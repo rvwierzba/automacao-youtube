@@ -41,11 +41,8 @@ def criar_legenda(texto, imagem_saida="legenda.png"):
     # Define o texto da legenda
     legenda_texto = "English Narration:\n" + texto
 
-    # Calcula a posição do texto para centralização
-    texto_posicao = (10, 10)  # Margem esquerda e superior
-
     # Adiciona o texto à imagem
-    d.multiline_text(texto_posicao, legenda_texto, font=fonte, fill=texto_cor, align="center")
+    d.multiline_text((10, 10), legenda_texto, font=fonte, fill=texto_cor, align="center")
 
     # Salva a imagem da legenda
     img.save(imagem_saida)

@@ -1,46 +1,49 @@
-name: Build & Upload
+name: Automação YouTube
 
 on:
-  workflow_dispatch: {}   # Permite rodar manualmente
-  schedule:
-    - cron: "0 5,19 * * *"  # Roda duas vezes ao dia (5h e 19h)
+  push:
+    branches:
+      - main
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout do Código
-        uses: actions/checkout@v3
+    - uses: actions/checkout@v3
 
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.9"
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
 
-      - name: Install & Run
-        shell: bash
-        run: |
-          echo "IMAGEMAGICK_BINARY=/bin/false" >> $GITHUB_ENV
+    - name: Install & Run
+      run: |
+        python -m venv venv
+        source venv/bin/activate
+        pip install --upgrade pip
+        pip install --no-cache-dir -r requirements.txt
 
-          python -m venv venv
-          source venv/bin/activate
-          pip install --upgrade pip
-          pip install --no-cache-dir -r requirements.txt
+        echo ">>> pip freeze debug:"
+        pip freeze
 
-          echo ">>> pip freeze debug:"
-          pip freeze
+        # 1) Gera vídeo
+        python scripts/main.py \
+          --gemini-api "$GEMINI_API_KEY" \
+          --youtube-channel "$YOUTUBE_CHANNEL_ID"
 
-          # 1) Gera vídeo
-          python scripts/main.py \
-            --gemini-api "${{ secrets.GEMINI_API_KEY }}" \
-            --youtube-channel "${{ secrets.YOUTUBE_CHANNEL_ID }}"
+        # 2) Faz Upload no YouTube
+        python scripts/upload_youtube.py \
+          --video-file "video_final.mp4" \
+          --client-secret-file "$CLIENT_SECRET_FILE_FIZZQUIRK" \
+          --token-file "$TOKEN_FILE_FIZZQUIRK" \
+          --title "Curiosities Title" \
+          --description "Curious facts" \
+          --category "22" \
+          --tags curiosities facts
 
-          # 2) Faz Upload no YouTube
-          python scripts/upload_youtube.py \
-            --video-file "video_final.mp4" \
-            --client-secret-file "${{ secrets.CLIENT_SECRET_FILE_FIZZQUIRK }}" \
-            --token-file "${{ secrets.TOKEN_FILE_FIZZQUIRK }}" \
-            --title "Curiosities Title" \
-            --description "Curious facts" \
-            --category "22" \
-            --tags curiosities facts
+      env:
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
+        CLIENT_SECRET_FILE_FIZZQUIRK: ${{ secrets.CLIENT_SECRET_FILE_FIZZQUIRK }}
+        TOKEN_FILE_FIZZQUIRK: ${{ secrets.TOKEN_FILE_FIZZQUIRK }}

@@ -14,6 +14,7 @@ def upload_video(video_file, client_secret_file, token_file, title, description,
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
+            print("Token renovado com sucesso.")
         else:
             raise Exception("Credenciais inválidas ou expiradas.")
     

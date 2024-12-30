@@ -24,7 +24,7 @@ def upload_video(video_file, client_secret_file, token_file, title, description,
             'categoryId': category,
             'title': title,
             'description': description,
-            'tags': tags.split(",")  # Ajustado para separar por vírgula
+            'tags': [tag.strip() for tag in tags.split(",")]  # Separar por vírgula e remover espaços
         },
         'status': {
             'privacyStatus': 'public',

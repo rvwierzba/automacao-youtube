@@ -1,29 +1,59 @@
 import argparse
 import os
 import tempfile
+import requests
 from gtts import gTTS
 from PIL import Image, ImageDraw, ImageFont
 from moviepy.editor import (
-    ColorClip, AudioFileClip, ImageClip, CompositeVideoClip
+    ColorClip, AudioFileClip, ImageClip, CompositeVideoClip, concatenate_videoclips, concatenate_audioclips
 )
+import json
 
-def gerar_texto_automatico():
+def buscar_imagem_pixabay(query, api_key, largura=1280, altura=720):
     """
-    Função simulada para gerar texto automaticamente.
-    Substitua esta função pela integração real com a API Gemini.
+    Busca uma imagem no Pixabay relacionada à query.
+    Retorna o caminho para a imagem baixada localmente.
     """
-    return (
-        "Hello and welcome to our channel! "
-        "In today's episode, we explore some curious facts about planet Earth. "
-        "Did you know that Mount Everest is not actually the closest point to outer space?"
-    )
+    url = 'https://pixabay.com/api/'
+    params = {
+        'key': api_key,
+        'q': query,
+        'image_type': 'photo',
+        'orientation': 'horizontal',
+        'safesearch': 'true',
+        'per_page': 3
+    }
+    response = requests.get(url, params=params)
+    data = response.json()
+    
+    if data['hits']:
+        # Seleciona a primeira imagem
+        image_url = data['hits'][0]['largeImageURL']
+        image_response = requests.get(image_url)
+        image_path = os.path.join(tempfile.gettempdir(), os.path.basename(image_url))
+        with open(image_path, 'wb') as f:
+            f.write(image_response.content)
+        return image_path
+    else:
+        return None
+
+def gerar_narracao(texto, idioma='en'):
+    """
+    Gera uma narração a partir do texto usando gTTS.
+    Retorna o caminho para o arquivo de áudio gerado.
+    """
+    tts = gTTS(texto, lang=idioma)
+    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_audio:
+        audio_path = tmp_audio.name
+    tts.save(audio_path)
+    return audio_path
 
 def criar_legenda(texto, imagem_saida="legenda.png"):
     """
     Cria uma imagem com o texto da legenda usando Pillow.
     """
     # Configurações da legenda
-    largura, altura = 1200, 200  # Tamanho da imagem da legenda
+    largura, altura = 1280, 100  # Tamanho da imagem da legenda
     fundo_cor = (30, 30, 30)     # Cor de fundo (cinza escuro)
     texto_cor = (255, 255, 255)  # Cor do texto (branco)
     fonte_tamanho = 40            # Tamanho da fonte
@@ -39,63 +69,90 @@ def criar_legenda(texto, imagem_saida="legenda.png"):
         fonte = ImageFont.load_default()
 
     # Define o texto da legenda
-    legenda_texto = "English Narration:\n" + texto
+    legenda_texto = texto
 
-    # Adiciona o texto à imagem
-    d.multiline_text((10, 10), legenda_texto, font=fonte, fill=texto_cor, align="center")
+    # Adiciona o texto à imagem, centralizado
+    text_width, text_height = d.textsize(legenda_texto, font=fonte)
+    position = ((largura - text_width) / 2, (altura - text_height) / 2)
+    d.text(position, legenda_texto, font=fonte, fill=texto_cor, align="center")
 
     # Salva a imagem da legenda
     img.save(imagem_saida)
 
-def criar_video(texto, video_saida="video_final.mp4"):
+def criar_video(curiosidades, pixabay_api_key, video_saida="video_final.mp4"):
     """
-    1. Converte o texto em áudio usando gTTS (idioma inglês).
-    2. Cria um fundo colorido com duração do áudio.
-    3. Cria uma imagem de legenda com Pillow.
-    4. Adiciona a legenda ao vídeo.
-    5. Salva o arquivo final .mp4.
+    Cria um vídeo a partir de uma lista de curiosidades.
+    Cada curiosidade terá uma imagem e uma narração correspondente.
     """
-
-    # 1. Converte texto em áudio (gTTS).
-    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_audio:
-        audio_path = tmp_audio.name
-    tts = gTTS(texto, lang='en')
-    tts.save(audio_path)
-
-    # Carrega o áudio no MoviePy.
-    audio_clip = AudioFileClip(audio_path)
-
-    # 2. Cria background colorido com a mesma duração do áudio.
-    duracao = audio_clip.duration
-    bg = ColorClip(size=(1280, 720), color=(30, 30, 30), duration=duracao)
-    bg = bg.set_audio(audio_clip)
-
-    # 3. Cria a legenda usando Pillow.
-    legenda_path = "legenda.png"
-    criar_legenda(texto, legenda_path)
-    legenda_clip = ImageClip(legenda_path).set_duration(duracao).set_position(("center", "bottom"))
-
-    # 4. Combina o fundo e a legenda.
-    video_final = CompositeVideoClip([bg, legenda_clip])
-
-    # 5. Exporta o vídeo final.
-    video_final.write_videofile(video_saida, fps=30)
-
-    # Remove arquivos temporários.
-    os.remove(audio_path)
-    os.remove(legenda_path)
+    clips = []
+    audios = []
+    
+    for index, curiosidade in enumerate(curiosidades, start=1):
+        # Buscar imagem relacionada
+        imagem = buscar_imagem_pixabay(curiosidade['titulo'], pixabay_api_key)
+        if not imagem:
+            print(f"Sem imagem para: {curiosidade['titulo']}")
+            continue
+        
+        # Gerar narração
+        narracao_texto = curiosidade['descricao']
+        narracao = gerar_narracao(narracao_texto)
+        audios.append(AudioFileClip(narracao))
+        
+        # Criar legenda
+        criar_legenda(curiosidade['titulo'], imagem_saida="legenda.png")
+        legenda_clip = ImageClip("legenda.png").set_duration(AudioFileClip(narracao).duration).set_position(("center", "bottom"))
+        
+        # Criar clipe de imagem
+        imagem_clip = ImageClip(imagem).set_duration(AudioFileClip(narracao).duration)
+        
+        # Combinar imagem e legenda
+        video_clip = CompositeVideoClip([imagem_clip, legenda_clip])
+        video_clip = video_clip.set_audio(AudioFileClip(narracao))
+        
+        clips.append(video_clip)
+    
+    if not clips:
+        print("Nenhum clipe foi criado. Verifique as curiosidades e as imagens.")
+        return
+    
+    # Concatenar todos os clipes
+    final_video = concatenate_videoclips(clips, method="compose")
+    
+    # Exportar o vídeo final
+    final_video.write_videofile(video_saida, fps=24)
+    
+    # Limpar arquivos temporários
+    for audio in audios:
+        os.remove(audio.filename)
+    os.remove("legenda.png")
 
 def main():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description="Gerar vídeo de curiosidades com imagens e narração.")
     parser.add_argument("--gemini-api", required=False, help="Chave/variável para Gemini, se usar.")
     parser.add_argument("--youtube-channel", required=False, help="ID ou info do canal.")
+    parser.add_argument("--pixabay-api", required=True, help="Chave de API do Pixabay para buscar imagens.")
     args = parser.parse_args()
-
-    # Gera o texto automaticamente (substitua pela chamada real à API Gemini).
-    texto_exemplo = gerar_texto_automatico()
-
-    # Gera o vídeo final.
-    criar_video(texto_exemplo, video_saida="video_final.mp4")
+    
+    # Definir a lista de curiosidades
+    curiosidades = [
+        {
+            "titulo": "Fato 1: Montanha mais alta",
+            "descricao": "Did you know that Mount Everest is not actually the closest point to outer space?"
+        },
+        {
+            "titulo": "Fato 2: Profundidade do Oceano",
+            "descricao": "The Mariana Trench is the deepest part of the world's oceans, reaching depths of over 36,000 feet."
+        },
+        {
+            "titulo": "Fato 3: Velocidade da Luz",
+            "descricao": "Light travels at an incredible speed of approximately 299,792 kilometers per second."
+        },
+        # Adicione mais curiosidades conforme necessário
+    ]
+    
+    # Criar o vídeo
+    criar_video(curiosidades, args.pixabay_api)
 
 if __name__ == "__main__":
     main()

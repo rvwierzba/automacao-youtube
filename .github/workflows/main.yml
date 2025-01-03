@@ -1,10 +1,10 @@
 name: Automação YouTube
 
-# Agendamento para 5 AM e 7 PM UTC diariamente
+# Agendamento para 6 AM e 6 PM UTC diariamente
 on:
   schedule:
-    - cron: '0 5 * * *'   # 5:00 AM UTC
-    - cron: '0 19 * * *'  # 7:00 PM UTC
+    - cron: '0 6 * * *'   # 6:00 AM UTC
+    - cron: '0 18 * * *'  # 6:00 PM UTC
   workflow_dispatch:      # Permitir execução manual, se necessário
 
 jobs:
@@ -41,12 +41,12 @@ jobs:
 
     # Passo Opcional: Verificar os Arquivos Criados (Para Depuração)
     # **Remova este passo após verificar que os arquivos estão corretos**
-    - name: Verify JSON Files
-      run: |
-        echo "Verificando os primeiros 10 caracteres de client_secret.json:"
-        head -c 10 client_secret.json
-        echo "Verificando os primeiros 10 caracteres de token.json:"
-        head -c 10 token.json
+    # - name: Verify JSON Files
+    #   run: |
+    #     echo "Verificando os primeiros 10 caracteres de client_secret.json:"
+    #     head -c 10 client_secret.json
+    #     echo "Verificando os primeiros 10 caracteres de token.json:"
+    #     head -c 10 token.json
 
     # Passo 6: Gerar e Fazer Upload do Vídeo
     - name: Generate and Upload Video
@@ -59,17 +59,18 @@ jobs:
         python scripts/main.py \
           --gemini-api "$GEMINI_API_KEY" \
           --youtube-channel "$YOUTUBE_CHANNEL_ID" \
-          --pixabay-api "$PIXABAY_API_KEY"
+          --pixabay-api "$PIXABAY_API_KEY" \
+          --quantidade 5  # Ajuste o número de curiosidades conforme necessário
 
         # 2) Faz Upload no YouTube
         python scripts/upload_youtube.py \
           --video-file "video_final.mp4" \
           --client-secret-file "client_secret.json" \
           --token-file "token.json" \
-          --title "Curiosities Title" \
-          --description "Curious facts" \
+          --title "Curiosidades do Dia" \
+          --description "Confira essas curiosidades incríveis!" \
           --category "22" \
-          --tags "curiosities,facts"
+          --tags "curiosidades,fatos,informação"
 
       env:
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}

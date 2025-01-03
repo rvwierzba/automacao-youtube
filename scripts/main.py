@@ -5,9 +5,8 @@ import requests
 from gtts import gTTS
 from PIL import Image, ImageDraw, ImageFont
 from moviepy.editor import (
-    ColorClip, AudioFileClip, ImageClip, CompositeVideoClip, concatenate_videoclips, concatenate_audioclips
+    AudioFileClip, ImageClip, CompositeVideoClip, concatenate_videoclips
 )
-import json
 
 def buscar_imagem_pixabay(query, api_key, largura=1280, altura=720):
     """
@@ -24,17 +23,32 @@ def buscar_imagem_pixabay(query, api_key, largura=1280, altura=720):
         'per_page': 3
     }
     response = requests.get(url, params=params)
-    data = response.json()
     
+    if response.status_code != 200:
+        print(f"Erro ao buscar imagem para '{query}': {response.status_code}")
+        return None
+    
+    try:
+        data = response.json()
+    except ValueError:
+        print(f"Resposta inválida para a busca de imagem para '{query}'.")
+        return None
+
     if data['hits']:
         # Seleciona a primeira imagem
         image_url = data['hits'][0]['largeImageURL']
         image_response = requests.get(image_url)
+        
+        if image_response.status_code != 200:
+            print(f"Erro ao baixar a imagem de '{image_url}': {image_response.status_code}")
+            return None
+        
         image_path = os.path.join(tempfile.gettempdir(), os.path.basename(image_url))
         with open(image_path, 'wb') as f:
             f.write(image_response.content)
         return image_path
     else:
+        print(f"Nenhuma imagem encontrada para '{query}'.")
         return None
 
 def gerar_narracao(texto, idioma='en'):
@@ -88,19 +102,22 @@ def criar_video(curiosidades, pixabay_api_key, video_saida="video_final.mp4"):
     audios = []
     
     for index, curiosidade in enumerate(curiosidades, start=1):
+        titulo = curiosidade['titulo']
+        descricao = curiosidade['descricao']
+        print(f"Processando curiosidade {index}: {titulo}")
+        
         # Buscar imagem relacionada
-        imagem = buscar_imagem_pixabay(curiosidade['titulo'], pixabay_api_key)
+        imagem = buscar_imagem_pixabay(titulo, pixabay_api_key)
         if not imagem:
-            print(f"Sem imagem para: {curiosidade['titulo']}")
+            print(f"Sem imagem para: {titulo}")
             continue
         
         # Gerar narração
-        narracao_texto = curiosidade['descricao']
-        narracao = gerar_narracao(narracao_texto)
+        narracao = gerar_narracao(descricao)
         audios.append(AudioFileClip(narracao))
         
         # Criar legenda
-        criar_legenda(curiosidade['titulo'], imagem_saida="legenda.png")
+        criar_legenda(titulo, imagem_saida="legenda.png")
         legenda_clip = ImageClip("legenda.png").set_duration(AudioFileClip(narracao).duration).set_position(("center", "bottom"))
         
         # Criar clipe de imagem
@@ -147,6 +164,14 @@ def main():
         {
             "titulo": "Fato 3: Velocidade da Luz",
             "descricao": "Light travels at an incredible speed of approximately 299,792 kilometers per second."
+        },
+        {
+            "titulo": "Fato 4: Diamante mais Duro",
+            "descricao": "Diamonds are the hardest natural material on Earth, rated 10 on the Mohs scale."
+        },
+        {
+            "titulo": "Fato 5: Células do Corpo",
+            "descricao": "The human body is composed of approximately 37.2 trillion cells."
         },
         # Adicione mais curiosidades conforme necessário
     ]

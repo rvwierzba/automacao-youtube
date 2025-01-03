@@ -8,6 +8,36 @@ from moviepy.editor import (
     AudioFileClip, ImageClip, CompositeVideoClip, concatenate_videoclips
 )
 
+def gerar_curiosidades_gemini(api_key, quantidade=5):
+    """
+    Gera uma lista de curiosidades usando a API do Gemini.
+    """
+    url = "https://api.gemini.com/v1/generate"  # Substitua pela URL correta da API do Gemini
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    prompt = f"Liste {quantidade} curiosidades interessantes e pouco conhecidas em português."
+
+    payload = {
+        "prompt": prompt,
+        "max_tokens": 150,
+        "temperature": 0.7,
+        # Adicione outros parâmetros conforme a documentação da API do Gemini
+    }
+
+    try:
+        response = requests.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+        data = response.json()
+        curiosidades = data.get("choices", [])[0].get("text", "").strip().split('\n')
+        # Limpar e formatar as curiosidades
+        curiosidades = [c.strip('- ').strip() for c in curiosidades if c.strip()]
+        return curiosidades
+    except Exception as e:
+        print(f"Erro ao gerar curiosidades com a API do Gemini: {e}")
+        return []
+
 def buscar_imagem_pixabay(query, api_key, largura=1280, altura=720):
     """
     Busca uma imagem no Pixabay relacionada à query.
@@ -51,7 +81,7 @@ def buscar_imagem_pixabay(query, api_key, largura=1280, altura=720):
         print(f"Nenhuma imagem encontrada para '{query}'.")
         return None
 
-def gerar_narracao(texto, idioma='en'):
+def gerar_narracao(texto, idioma='pt'):
     """
     Gera uma narração a partir do texto usando gTTS.
     Retorna o caminho para o arquivo de áudio gerado.
@@ -93,6 +123,44 @@ def criar_legenda(texto, imagem_saida="legenda.png"):
     # Salva a imagem da legenda
     img.save(imagem_saida)
 
+def carregar_historico(caminho="used_curiosidades.txt"):
+    """
+    Carrega o histórico de curiosidades já utilizadas.
+    """
+    if not os.path.exists(caminho):
+        return set()
+    with open(caminho, 'r', encoding='utf-8') as f:
+        return set(line.strip() for line in f)
+
+def salvar_historico(curiosidades, caminho="used_curiosidades.txt"):
+    """
+    Salva as curiosidades utilizadas no histórico.
+    """
+    with open(caminho, 'a', encoding='utf-8') as f:
+        for curiosidade in curiosidades:
+            f.write(f"{curiosidade}\n")
+
+def gerar_curiosidades_unicas(api_key, quantidade=5, caminho_historico="used_curiosidades.txt"):
+    """
+    Gera uma lista de curiosidades únicas usando a API do Gemini.
+    """
+    historico = carregar_historico(caminho_historico)
+    curiosidades = []
+    tentativas = 0
+    max_tentativas = 10  # Para evitar loops infinitos
+
+    while len(curiosidades) < quantidade and tentativas < max_tentativas:
+        novas_curiosidades = gerar_curiosidades_gemini(api_key, quantidade=1)
+        if not novas_curiosidades:
+            break
+        curiosidade = novas_curiosidades[0]
+        if curiosidade not in historico and curiosidade not in curiosidades:
+            curiosidades.append(curiosidade)
+        tentativas += 1
+
+    salvar_historico(curiosidades, caminho_historico)
+    return curiosidades
+
 def criar_video(curiosidades, pixabay_api_key, video_saida="video_final.mp4"):
     """
     Cria um vídeo a partir de uma lista de curiosidades.
@@ -102,15 +170,18 @@ def criar_video(curiosidades, pixabay_api_key, video_saida="video_final.mp4"):
     audios = []
     
     for index, curiosidade in enumerate(curiosidades, start=1):
-        titulo = curiosidade['titulo']
-        descricao = curiosidade['descricao']
-        print(f"Processando curiosidade {index}: {titulo}")
+        titulo = f"Curiosidade {index}"
+        descricao = curiosidade
+        print(f"Processando: {titulo}")
         
         # Buscar imagem relacionada
         imagem = buscar_imagem_pixabay(titulo, pixabay_api_key)
         if not imagem:
-            print(f"Sem imagem para: {titulo}")
-            continue
+            # Tentar buscar uma imagem genérica se não encontrar
+            imagem = buscar_imagem_pixabay("nature", pixabay_api_key)
+            if not imagem:
+                print(f"Sem imagem para: {titulo} e também não foi possível buscar uma imagem genérica.")
+                continue
         
         # Gerar narração
         narracao = gerar_narracao(descricao)
@@ -146,35 +217,19 @@ def criar_video(curiosidades, pixabay_api_key, video_saida="video_final.mp4"):
 
 def main():
     parser = argparse.ArgumentParser(description="Gerar vídeo de curiosidades com imagens e narração.")
-    parser.add_argument("--gemini-api", required=False, help="Chave/variável para Gemini, se usar.")
-    parser.add_argument("--youtube-channel", required=False, help="ID ou info do canal.")
+    parser.add_argument("--gemini-api", required=True, help="Chave de API do Gemini para gerar curiosidades.")
+    parser.add_argument("--youtube-channel", required=False, help="ID ou informação do canal.")
     parser.add_argument("--pixabay-api", required=True, help="Chave de API do Pixabay para buscar imagens.")
+    parser.add_argument("--quantidade", type=int, default=5, help="Número de curiosidades a gerar.")
+    parser.add_argument("--historico", type=str, default="used_curiosidades.txt", help="Caminho para o arquivo de histórico.")
     args = parser.parse_args()
     
-    # Definir a lista de curiosidades
-    curiosidades = [
-        {
-            "titulo": "Fato 1: Montanha mais alta",
-            "descricao": "Did you know that Mount Everest is not actually the closest point to outer space?"
-        },
-        {
-            "titulo": "Fato 2: Profundidade do Oceano",
-            "descricao": "The Mariana Trench is the deepest part of the world's oceans, reaching depths of over 36,000 feet."
-        },
-        {
-            "titulo": "Fato 3: Velocidade da Luz",
-            "descricao": "Light travels at an incredible speed of approximately 299,792 kilometers per second."
-        },
-        {
-            "titulo": "Fato 4: Diamante mais Duro",
-            "descricao": "Diamonds are the hardest natural material on Earth, rated 10 on the Mohs scale."
-        },
-        {
-            "titulo": "Fato 5: Células do Corpo",
-            "descricao": "The human body is composed of approximately 37.2 trillion cells."
-        },
-        # Adicione mais curiosidades conforme necessário
-    ]
+    # Gerar curiosidades únicas dinamicamente
+    curiosidades = gerar_curiosidades_unicas(args.gemini_api, quantidade=args.quantidade, caminho_historico=args.historico)
+    
+    if not curiosidades:
+        print("Nenhuma curiosidade única foi gerada.")
+        return
     
     # Criar o vídeo
     criar_video(curiosidades, args.pixabay_api)

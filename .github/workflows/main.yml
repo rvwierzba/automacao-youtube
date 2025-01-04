@@ -10,6 +10,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Permite que o workflow faça commit e push
 
     steps:
     # Passo 1: Checkout do Repositório
@@ -29,40 +31,47 @@ jobs:
         pip install --upgrade pip
         pip install --no-cache-dir -r requirements.txt
 
-    # Passo 4: Criar Arquivo client_secret.json a partir do Segredo Base64
+    # Passo 4: Configurar Git
+    - name: Configure Git
+      run: |
+        git config --global user.name "GitHub Actions"
+        git config --global user.email "actions@github.com"
+
+    # Passo 5: Criar Arquivo client_secret.json a partir do Segredo Base64
     - name: Create Client Secret File
       run: |
         echo "${{ secrets.CLIENT_SECRET_FILE_FIZZQUIRK }}" | base64 --decode > client_secret.json
 
-    # Passo 5: Criar Arquivo token.json a partir do Segredo Base64
+    # Passo 6: Criar Arquivo token.json a partir do Segredo Base64
     - name: Create Token File
       run: |
         echo "${{ secrets.TOKEN_FILE_FIZZQUIRK }}" | base64 --decode > token.json
 
-    # Passo Opcional: Verificar os Arquivos Criados (Para Depuração)
-    # **Remova este passo após verificar que os arquivos estão corretos**
-    # - name: Verify JSON Files
-    #   run: |
-    #     echo "Verificando os primeiros 10 caracteres de client_secret.json:"
-    #     head -c 10 client_secret.json
-    #     echo "Verificando os primeiros 10 caracteres de token.json:"
-    #     head -c 10 token.json
-
-    # Passo 6: Gerar e Fazer Upload do Vídeo
-    - name: Generate and Upload Video
+    # Passo 7: Gerar Vídeo
+    - name: Generate Video
+      id: generate_video
       run: |
         source venv/bin/activate
         echo ">>> pip freeze debug:"
         pip freeze
 
-        # 1) Gera vídeo
+        # Gera vídeo
         python scripts/main.py \
           --gemini-api "$GEMINI_API_KEY" \
           --youtube-channel "$YOUTUBE_CHANNEL_ID" \
           --pixabay-api "$PIXABAY_API_KEY" \
           --quantidade 5  # Ajuste o número de curiosidades conforme necessário
+      env:
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
+        PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
 
-        # 2) Faz Upload no YouTube
+    # Passo 8: Fazer Upload no YouTube (Só se o Passo Anterior Tiver Sucesso)
+    - name: Upload to YouTube
+      if: success() && steps.generate_video.outcome == 'success'
+      run: |
+        source venv/bin/activate
+
         python scripts/upload_youtube.py \
           --video-file "video_final.mp4" \
           --client-secret-file "client_secret.json" \
@@ -71,9 +80,5 @@ jobs:
           --description "Confira essas curiosidades incríveis!" \
           --category "22" \
           --tags "curiosidades,fatos,informação"
-
       env:
-        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
         YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
-        PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}

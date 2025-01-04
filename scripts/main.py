@@ -1,36 +1,30 @@
 import argparse
 import os
 import tempfile
-import requests
+import subprocess
+from google.generativeai import GenAI  # Importação correta
 from gtts import gTTS
 from PIL import Image, ImageDraw, ImageFont
 from moviepy.editor import (
     AudioFileClip, ImageClip, CompositeVideoClip, concatenate_videoclips
 )
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
+from google_auth_oauthlib.flow import InstalledAppFlow
+
+# Scopes necessários para a API do YouTube
+SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
 
 def gerar_curiosidades_gemini(api_key, quantidade=5):
     """
     Gera uma lista de curiosidades usando a API do Gemini.
     """
-    url = "https://api.gemini.com/v1/generate"  # Substitua pela URL correta da API do Gemini
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
-    prompt = f"Liste {quantidade} curiosidades interessantes e pouco conhecidas em português."
-
-    payload = {
-        "prompt": prompt,
-        "max_tokens": 150,
-        "temperature": 0.7,
-        # Adicione outros parâmetros conforme a documentação da API do Gemini
-    }
-
     try:
-        response = requests.post(url, headers=headers, json=payload)
-        response.raise_for_status()
-        data = response.json()
-        curiosidades = data.get("choices", [])[0].get("text", "").strip().split('\n')
+        GenAI.configure(api_key=api_key)
+        model = GenAI.GenerativeModel("gemini-1.5-flash")  # Utilize o modelo correto
+        prompt = f"Liste {quantidade} curiosidades interessantes e pouco conhecidas em português."
+        response = model.generate_content(prompt)
+        curiosidades = response.text.strip().split('\n')
         # Limpar e formatar as curiosidades
         curiosidades = [c.strip('- ').strip() for c in curiosidades if c.strip()]
         return curiosidades
@@ -134,11 +128,16 @@ def carregar_historico(caminho="used_curiosidades.txt"):
 
 def salvar_historico(curiosidades, caminho="used_curiosidades.txt"):
     """
-    Salva as curiosidades utilizadas no histórico.
+    Salva as curiosidades utilizadas no histórico e faz commit no repositório.
     """
     with open(caminho, 'a', encoding='utf-8') as f:
         for curiosidade in curiosidades:
             f.write(f"{curiosidade}\n")
+    
+    # Adiciona, faz commit e push do arquivo de histórico
+    subprocess.run(["git", "add", caminho], check=True)
+    subprocess.run(["git", "commit", "-m", f"Atualiza histórico de curiosidades: {', '.join(curiosidades)}"], check=True)
+    subprocess.run(["git", "push"], check=True)
 
 def gerar_curiosidades_unicas(api_key, quantidade=5, caminho_historico="used_curiosidades.txt"):
     """
@@ -158,7 +157,9 @@ def gerar_curiosidades_unicas(api_key, quantidade=5, caminho_historico="used_cur
             curiosidades.append(curiosidade)
         tentativas += 1
 
-    salvar_historico(curiosidades, caminho_historico)
+    if curiosidades:
+        salvar_historico(curiosidades, caminho_historico)
+    
     return curiosidades
 
 def criar_video(curiosidades, pixabay_api_key, video_saida="video_final.mp4"):
@@ -178,7 +179,7 @@ def criar_video(curiosidades, pixabay_api_key, video_saida="video_final.mp4"):
         imagem = buscar_imagem_pixabay(titulo, pixabay_api_key)
         if not imagem:
             # Tentar buscar uma imagem genérica se não encontrar
-            imagem = buscar_imagem_pixabay("nature", pixabay_api_key)
+            imagem = buscar_imagem_pixabay("natureza", pixabay_api_key)
             if not imagem:
                 print(f"Sem imagem para: {titulo} e também não foi possível buscar uma imagem genérica.")
                 continue
@@ -202,7 +203,7 @@ def criar_video(curiosidades, pixabay_api_key, video_saida="video_final.mp4"):
     
     if not clips:
         print("Nenhum clipe foi criado. Verifique as curiosidades e as imagens.")
-        return
+        return False  # Indica falha na criação do vídeo
     
     # Concatenar todos os clipes
     final_video = concatenate_videoclips(clips, method="compose")
@@ -214,6 +215,8 @@ def criar_video(curiosidades, pixabay_api_key, video_saida="video_final.mp4"):
     for audio in audios:
         os.remove(audio.filename)
     os.remove("legenda.png")
+    
+    return True  # Indica sucesso na criação do vídeo
 
 def main():
     parser = argparse.ArgumentParser(description="Gerar vídeo de curiosidades com imagens e narração.")
@@ -229,10 +232,16 @@ def main():
     
     if not curiosidades:
         print("Nenhuma curiosidade única foi gerada.")
-        return
+        exit(1)  # Saída com erro
     
     # Criar o vídeo
-    criar_video(curiosidades, args.pixabay_api)
+    sucesso = criar_video(curiosidades, args.pixabay_api)
+    
+    if not sucesso:
+        print("Falha na criação do vídeo.")
+        exit(1)  # Saída com erro
+    
+    exit(0)  # Saída com sucesso
 
 if __name__ == "__main__":
     main()

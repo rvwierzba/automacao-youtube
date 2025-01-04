@@ -1,5 +1,6 @@
 # Google Generative AI Library
-google-generativeai
+google-generativeai==0.8.3  # Versão mais recente disponível
+
 # Google API Client Libraries
 google-api-python-client==2.156.0
 google-auth==2.37.0
@@ -32,6 +33,8 @@ proto-plus==1.25.0
 protobuf==4.25.5
 pyasn1==0.6.1
 pyasn1_modules==0.4.1
+pydantic==2.10.4
+pydantic_core==2.27.2
 pyparsing==3.2.1
 regex==2024.11.6
 tqdm==4.67.1

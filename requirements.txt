@@ -1,10 +1,40 @@
-moviepy==1.0.3
-Pillow==10.4.0
+# Google Generative AI Library
+google-generativeai==0.1.0
+
+# Google API Client Libraries
+google-api-python-client==2.156.0
 google-auth==2.37.0
 google-auth-oauthlib==1.2.1
-google-api-python-client==2.156.0
-google-generativeai==0.1.0  # Adicione esta linha
-python-dotenv==1.0.1
+google-auth-httplib2==0.2.0
+
+# Text-to-Speech
 gTTS==2.5.4
+
+# Video and Image Processing
+moviepy==1.0.3
+Pillow==10.4.0
+
+# Natural Language Processing
 nltk==3.9.1
+
+# Environment Variables
+python-dotenv==1.0.1
+
+# HTTP Requests
 requests==2.32.3
+
+# Utilities
+cachetools==5.5.0
+click==8.1.8
+decorator==4.4.2
+joblib==1.4.2
+proglog==0.1.10
+proto-plus==1.25.0
+protobuf==4.25.5
+pyasn1==0.6.1
+pyasn1_modules==0.4.1
+pyparsing==3.2.1
+regex==2024.11.6
+tqdm==4.67.1
+uritemplate==4.1.1
+urllib3==2.3.0

@@ -1,3 +1,5 @@
+# .github/workflows/main.yml
+
 name: Automação YouTube
 
 # Agendamento para 6 AM e 6 PM UTC diariamente

@@ -22,7 +22,7 @@ def gerar_curiosidades_gemini(api_key, quantidade=5):
     try:
         genai.configure(api_key=api_key)
         prompt = f"Liste {quantidade} curiosidades interessantes e pouco conhecidas em português."
-        response = genai.text_create(
+        response = genai.generate_text(
             model="text-bison-001",  # Utilize o modelo correto disponível para sua conta
             prompt=prompt,
             max_tokens=150,

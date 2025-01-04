@@ -1,3 +1,5 @@
+# scripts/upload_youtube.py
+
 import argparse
 import os
 import json

@@ -1,38 +1,39 @@
-import google.generativeai as palm
+name: Main Workflow
 
-# Configuração da API Gemini
-def configurar_gemini(api_key):
-    palm.configure(api_key=api_key)
+on:
+  push:
+    branches:
+      - main
 
-# Gerar curiosidades
-def gerar_curiosidades(api_key, quantidade):
-    configurar_gemini(api_key)
-    curiosidades = []
-    try:
-        for i in range(quantidade):
-            resposta = palm.generate_text(prompt="Escreva uma curiosidade interessante e única.", temperature=0.7)
-            curiosidades.append(resposta.result if resposta else "Nenhuma curiosidade gerada.")
-    except Exception as e:
-        print(f"Erro ao gerar curiosidades: {e}")
-    return curiosidades
+jobs:
+  generate-video:
+    runs-on: ubuntu-latest
 
-if __name__ == "__main__":
-    import argparse
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-    parser = argparse.ArgumentParser(description="Gerar vídeo com curiosidades.")
-    parser.add_argument("--gemini-api", required=True, help="Chave da API Gemini")
-    parser.add_argument("--youtube-channel", required=True, help="ID do canal no YouTube")
-    parser.add_argument("--pixabay-api", required=True, help="Chave da API Pixabay")
-    parser.add_argument("--quantidade", type=int, default=5, help="Número de curiosidades a gerar")
-    
-    args = parser.parse_args()
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.9
 
-    # Geração de curiosidades
-    curiosidades = gerar_curiosidades(args.gemini_api, args.quantidade)
-    if not curiosidades:
-        print("Nenhuma curiosidade única foi gerada.")
-        exit(1)
+    - name: Install dependencies
+      run: |
+        python -m venv venv
+        source venv/bin/activate
+        pip install --upgrade pip
+        pip install google-generativeai moviepy python-dotenv requests
 
-    # Exibir as curiosidades geradas
-    for curiosidade in curiosidades:
-        print(curiosidade)
+    - name: Generate Video
+      env:
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
+        PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+      run: |
+        source venv/bin/activate
+        python scripts/main.py \
+          --gemini-api "$GEMINI_API_KEY" \
+          --youtube-channel "$YOUTUBE_CHANNEL_ID" \
+          --pixabay-api "$PIXABAY_API_KEY" \
+          --quantidade 5

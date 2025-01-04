@@ -1,6 +1,5 @@
 # Google Generative AI Library
-google-generativeai==0.1.0
-
+google-generativeai
 # Google API Client Libraries
 google-api-python-client==2.156.0
 google-auth==2.37.0

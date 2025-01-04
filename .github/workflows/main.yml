@@ -57,6 +57,9 @@ jobs:
         echo ">>> pip freeze debug:"
         pip freeze
 
+        # Adicionar debug para verificar métodos disponíveis
+        python -c "import google.generativeai as genai; genai.configure(api_key='$GEMINI_API_KEY'); print('Métodos disponíveis em google.generativeai:', dir(genai))"
+
         # Gera vídeo
         python scripts/main.py \
           --gemini-api "$GEMINI_API_KEY" \

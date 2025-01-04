@@ -1,8 +1,10 @@
+# scripts/main.py
+
 import argparse
 import os
 import tempfile
 import subprocess
-from google.generativeai import GenAI  # Importação correta
+import google.generativeai as genai  # Importação correta
 from gtts import gTTS
 from PIL import Image, ImageDraw, ImageFont
 from moviepy.editor import (
@@ -10,18 +12,16 @@ from moviepy.editor import (
 )
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
-from google_auth_oauthlib.flow import InstalledAppFlow
+import requests  # Adicionado, pois estava faltando
 
-# Scopes necessários para a API do YouTube
-SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
-
+# Função para gerar curiosidades usando a API do Gemini
 def gerar_curiosidades_gemini(api_key, quantidade=5):
     """
     Gera uma lista de curiosidades usando a API do Gemini.
     """
     try:
-        GenAI.configure(api_key=api_key)
-        model = GenAI.GenerativeModel("gemini-1.5-flash")  # Utilize o modelo correto
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("gemini-1.5-flash")  # Utilize o modelo correto
         prompt = f"Liste {quantidade} curiosidades interessantes e pouco conhecidas em português."
         response = model.generate_content(prompt)
         curiosidades = response.text.strip().split('\n')
@@ -32,6 +32,7 @@ def gerar_curiosidades_gemini(api_key, quantidade=5):
         print(f"Erro ao gerar curiosidades com a API do Gemini: {e}")
         return []
 
+# Função para buscar imagens no Pixabay
 def buscar_imagem_pixabay(query, api_key, largura=1280, altura=720):
     """
     Busca uma imagem no Pixabay relacionada à query.
@@ -75,6 +76,7 @@ def buscar_imagem_pixabay(query, api_key, largura=1280, altura=720):
         print(f"Nenhuma imagem encontrada para '{query}'.")
         return None
 
+# Função para gerar narração usando gTTS
 def gerar_narracao(texto, idioma='pt'):
     """
     Gera uma narração a partir do texto usando gTTS.
@@ -86,6 +88,7 @@ def gerar_narracao(texto, idioma='pt'):
     tts.save(audio_path)
     return audio_path
 
+# Função para criar legenda usando Pillow
 def criar_legenda(texto, imagem_saida="legenda.png"):
     """
     Cria uma imagem com o texto da legenda usando Pillow.
@@ -117,6 +120,7 @@ def criar_legenda(texto, imagem_saida="legenda.png"):
     # Salva a imagem da legenda
     img.save(imagem_saida)
 
+# Função para carregar o histórico de curiosidades já utilizadas
 def carregar_historico(caminho="used_curiosidades.txt"):
     """
     Carrega o histórico de curiosidades já utilizadas.
@@ -126,6 +130,7 @@ def carregar_historico(caminho="used_curiosidades.txt"):
     with open(caminho, 'r', encoding='utf-8') as f:
         return set(line.strip() for line in f)
 
+# Função para salvar o histórico de curiosidades e fazer commit no Git
 def salvar_historico(curiosidades, caminho="used_curiosidades.txt"):
     """
     Salva as curiosidades utilizadas no histórico e faz commit no repositório.
@@ -139,6 +144,7 @@ def salvar_historico(curiosidades, caminho="used_curiosidades.txt"):
     subprocess.run(["git", "commit", "-m", f"Atualiza histórico de curiosidades: {', '.join(curiosidades)}"], check=True)
     subprocess.run(["git", "push"], check=True)
 
+# Função para gerar curiosidades únicas
 def gerar_curiosidades_unicas(api_key, quantidade=5, caminho_historico="used_curiosidades.txt"):
     """
     Gera uma lista de curiosidades únicas usando a API do Gemini.
@@ -162,6 +168,7 @@ def gerar_curiosidades_unicas(api_key, quantidade=5, caminho_historico="used_cur
     
     return curiosidades
 
+# Função para criar o vídeo
 def criar_video(curiosidades, pixabay_api_key, video_saida="video_final.mp4"):
     """
     Cria um vídeo a partir de uma lista de curiosidades.
@@ -218,6 +225,7 @@ def criar_video(curiosidades, pixabay_api_key, video_saida="video_final.mp4"):
     
     return True  # Indica sucesso na criação do vídeo
 
+# Função principal
 def main():
     parser = argparse.ArgumentParser(description="Gerar vídeo de curiosidades com imagens e narração.")
     parser.add_argument("--gemini-api", required=True, help="Chave de API do Gemini para gerar curiosidades.")

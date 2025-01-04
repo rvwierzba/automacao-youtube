@@ -9,11 +9,13 @@ def gerar_curiosidades(api_key, quantidade):
     configurar_gemini(api_key)
     curiosidades = []
     try:
-        for i in range(quantidade):
-            # Utilizar o método `responder` para gerar texto
-            resposta = palm.responder(prompt="Escreva uma curiosidade interessante e única.")
-            if resposta and hasattr(resposta, 'result'):
-                curiosidades.append(resposta.result)
+        for _ in range(quantidade):
+            resposta = palm.responder(
+                prompt="Escreva uma curiosidade interessante e única.",
+                temperature=0.7
+            )
+            if resposta and "candidates" in resposta:
+                curiosidades.append(resposta["candidates"][0]["output"])
             else:
                 curiosidades.append("Nenhuma curiosidade gerada.")
     except Exception as e:
@@ -28,15 +30,13 @@ if __name__ == "__main__":
     parser.add_argument("--youtube-channel", required=True, help="ID do canal no YouTube")
     parser.add_argument("--pixabay-api", required=True, help="Chave da API Pixabay")
     parser.add_argument("--quantidade", type=int, default=5, help="Número de curiosidades a gerar")
-    
+
     args = parser.parse_args()
 
-    # Geração de curiosidades
     curiosidades = gerar_curiosidades(args.gemini_api, args.quantidade)
     if not curiosidades:
         print("Nenhuma curiosidade única foi gerada.")
         exit(1)
 
-    # Exibir as curiosidades geradas
     for curiosidade in curiosidades:
         print(curiosidade)

@@ -1,20 +1,21 @@
-import google.generativeai as palm
+import google.generativeai as genai
 
 # Configurar a API Gemini
 def configurar_gemini(api_key):
-    palm.configure(api_key=api_key)
+    genai.configure(api_key=api_key)
 
-# Gerar curiosidades
+# Função para gerar curiosidades
 def gerar_curiosidades(api_key, quantidade):
     configurar_gemini(api_key)
     curiosidades = []
     try:
         for _ in range(quantidade):
-            resposta = palm.responder(
+            resposta = genai.responder(
+                model="models/text-bison-001",  # Substitua pelo modelo correto se necessário
                 prompt="Escreva uma curiosidade interessante e única.",
                 temperature=0.7
             )
-            if resposta and "candidates" in resposta:
+            if resposta and resposta.get("candidates"):
                 curiosidades.append(resposta["candidates"][0]["output"])
             else:
                 curiosidades.append("Nenhuma curiosidade gerada.")

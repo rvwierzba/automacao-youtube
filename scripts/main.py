@@ -9,11 +9,12 @@ def gerar_curiosidades(api_key, quantidade):
     configurar_gemini(api_key)
     curiosidades = []
     try:
-        # Obter o primeiro modelo disponível
-        modelos = palm.list_models()
+        # Converter o iterador em uma lista
+        modelos = list(palm.list_models())
         if not modelos:
             raise ValueError("Nenhum modelo disponível para geração de texto.")
-        modelo = modelos[0].name  # Selecionar o primeiro modelo
+        
+        modelo = modelos[0].name  # Selecionar o primeiro modelo disponível
 
         for i in range(quantidade):
             resposta = palm.generate_text(model=modelo, prompt="Escreva uma curiosidade interessante e única.")

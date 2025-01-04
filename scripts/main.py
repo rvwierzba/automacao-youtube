@@ -10,8 +10,8 @@ def gerar_curiosidades(api_key, quantidade):
     curiosidades = []
     try:
         for i in range(quantidade):
-            resposta = palm.embed_content(prompt="Escreva uma curiosidade interessante e única.")
-            curiosidades.append(resposta.embedded_text if resposta else "Nenhuma curiosidade gerada.")
+            resposta = palm.responder(prompt="Escreva uma curiosidade interessante e única.")
+            curiosidades.append(resposta.result if resposta else "Nenhuma curiosidade gerada.")
     except Exception as e:
         print(f"Erro ao gerar curiosidades: {e}")
     return curiosidades

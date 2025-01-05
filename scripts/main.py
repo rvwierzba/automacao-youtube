@@ -1,55 +1,33 @@
-import google.generativeai as genai
+import argparse
 
-# Configuração da API Gemini
-def configurar_gemini(api_key):
-    try:
-        genai.configure(api_key=api_key)
-        print("Configuração da API Gemini concluída.")
-    except Exception as e:
-        print(f"Erro na configuração da API Gemini: {e}")
-        raise
-
-# Gerar curiosidades usando o método correto
-def gerar_curiosidades(api_key, quantidade):
-    configurar_gemini(api_key)
-    curiosidades = []
-    try:
-        for _ in range(quantidade):
-            resposta = genai.responder(
-                model="models/chat-bison-001",  # Modelo válido, ajuste se necessário
-                prompt="Escreva uma curiosidade interessante e única.",
-                temperature=0.7,
-            )
-            if resposta and "candidates" in resposta:
-                curiosidades.append(resposta["candidates"][0]["output"])
-            else:
-                curiosidades.append("Nenhuma curiosidade gerada.")
-    except AttributeError as e:
-        print(f"Erro de atributo: {e}")
-        raise
-    except Exception as e:
-        print(f"Erro geral ao gerar curiosidades: {e}")
-        raise
-    return curiosidades
-
-if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Gerar curiosidades para vídeo.")
+def main():
+    # Configurando os argumentos do script
+    parser = argparse.ArgumentParser(description="Gerar vídeo com curiosidades usando APIs externas")
     parser.add_argument("--gemini-api", required=True, help="Chave da API Gemini")
-    parser.add_argument("--quantidade", type=int, default=5, help="Número de curiosidades a gerar")
-
+    parser.add_argument("--youtube-channel", required=False, help="ID do canal do YouTube")
+    parser.add_argument("--pixabay-api", required=False, help="Chave da API do Pixabay")
+    parser.add_argument("--quantidade", type=int, default=5, help="Número de curiosidades a serem geradas")
     args = parser.parse_args()
 
+    # Exibindo os argumentos recebidos
+    print(f"API Gemini Key: {args.gemini_api}")
+    if args.youtube_channel:
+        print(f"YouTube Channel ID: {args.youtube_channel}")
+    if args.pixabay_api:
+        print(f"Pixabay API Key: {args.pixabay_api}")
+    print(f"Quantidade: {args.quantidade}")
+
+    # Adicione sua lógica principal aqui
     try:
-        curiosidades = gerar_curiosidades(args.gemini_api, args.quantidade)
-        if not curiosidades:
-            print("Nenhuma curiosidade gerada.")
-            exit(1)
-
-        for curiosidade in curiosidades:
-            print(f"Curiosidade: {curiosidade}")
-
+        # Exemplo de uso de um argumento
+        print("Iniciando o processo de geração de curiosidades...")
+        # Substitua pela sua lógica
+        for i in range(args.quantidade):
+            print(f"Curiosidade {i+1}: Exemplo de curiosidade gerada.")
+        print("Processo concluído com sucesso!")
     except Exception as e:
-        print(f"Erro crítico: {e}")
+        print(f"Erro ao gerar curiosidades: {e}")
         exit(1)
+
+if __name__ == "__main__":
+    main()

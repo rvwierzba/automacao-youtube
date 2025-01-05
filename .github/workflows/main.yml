@@ -76,6 +76,14 @@ jobs:
         YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
         PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
 
+    # Novo Passo: Listar Arquivos Após Geração do Vídeo
+    - name: List Files After Video Generation
+      run: |
+        echo ">>> Listando arquivos no diretório atual:"
+        ls -la
+        echo ">>> Verificando a existência de 'video_final.mp4':"
+        ls -la | grep video_final.mp4 || echo "Arquivo 'video_final.mp4' não encontrado."
+
     # Passo 8: Fazer Upload no YouTube (Só se o Passo Anterior Tiver Sucesso)
     - name: Upload to YouTube
       if: success() && steps.generate_video.outcome == 'success'

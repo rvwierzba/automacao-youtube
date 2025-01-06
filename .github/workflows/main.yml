@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:  # Gatilho manual
+  schedule:           # Gatilhos de agendamento
+    - cron: '0 8,22 * * *'  # Executa às 08:00 e 22:00 UTC diariamente
 
 jobs:
   build:
@@ -39,6 +42,7 @@ jobs:
           echo "${{ secrets.TOKEN_FILE_FIZZQUIRK }}" | base64 --decode > token.json
 
       - name: Generate Video
+        id: generate_video
         run: |
           source venv/bin/activate
           python scripts/main.py \

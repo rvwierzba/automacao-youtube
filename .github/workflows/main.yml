@@ -5,7 +5,7 @@ on:
     branches:
       - main
   workflow_dispatch:  # Gatilho manual
-  schedule:           # Gatilhos de agendamento
+  schedule:
     - cron: '0 8,22 * * *'  # Executa às 08:00 e 22:00 UTC diariamente
 
 jobs:
@@ -51,7 +51,7 @@ jobs:
             --pixabay-api "$PIXABAY_API_KEY" \
             --quantidade "$QUANTIDADE" | tee main_output.log
 
-      - name: List Files After Video Generation
+      - name: Listar Arquivos Após Geração do Vídeo
         run: |
           echo ">>> Listando arquivos no diretório atual:"
           ls -la

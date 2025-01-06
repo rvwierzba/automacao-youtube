@@ -31,8 +31,11 @@ def gerar_curiosidades_gemini(api_key, quantidade=5):
         # Limpar e formatar as curiosidades
         curiosidades = [c.strip('- ').strip() for c in curiosidades if c.strip()]
         return curiosidades
-    except Exception as e:
+    except AttributeError as e:
         print(f"Erro ao gerar curiosidades com a API do Gemini: {e}")
+        return []
+    except Exception as e:
+        print(f"Erro inesperado ao gerar curiosidades com a API do Gemini: {e}")
         return []
 
 

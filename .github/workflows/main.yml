@@ -1,79 +1,70 @@
-name: Build and Deploy
+name: Build and Deploy YouTube Automation
 
 on:
   push:
     branches:
       - main
-  workflow_dispatch:
-    inputs:
-      quantidade:
-        description: 'Quantidade de curiosidades a gerar'
-        required: false
-        default: '5'
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
 
-    - name: Install Dependencies
-      run: |
-        python -m venv venv
-        source venv/bin/activate
-        pip install --upgrade pip
-        pip install --no-cache-dir -r requirements.txt
+      - name: Install Dependencies
+        run: |
+          python -m venv venv
+          source venv/bin/activate
+          pip install --upgrade pip
+          pip install --no-cache-dir -r requirements.txt
 
-    - name: Configure Git
-      run: |
-        git config --global user.name "GitHub Actions"
-        git config --global user.email "actions@github.com"
+      - name: Configure Git
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
 
-    - name: Create Client Secret File
-      run: echo "${{ secrets.CLIENT_SECRET_FILE_FIZZQUIRK }}" | base64 --decode > client_secret.json
+      - name: Create Client Secret File
+        run: |
+          echo "${{ secrets.CLIENT_SECRET_FILE_FIZZQUIRK }}" | base64 --decode > client_secret.json
 
-    - name: Create Token File
-      run: echo "${{ secrets.TOKEN_FILE_FIZZQUIRK }}" | base64 --decode > token.json
+      - name: Create Token File
+        run: |
+          echo "${{ secrets.TOKEN_FILE_FIZZQUIRK }}" | base64 --decode > token.json
 
-    - name: Generate Video
-      run: |
-        source venv/bin/activate
-        python scripts/main.py \
-          --gemini-api "$GEMINI_API_KEY" \
-          --youtube-channel "$YOUTUBE_CHANNEL_ID" \
-          --pixabay-api "$PIXABAY_API_KEY" \
-          --quantidade "$QUANTIDADE" | tee main_output.log
+      - name: Generate Video
+        run: |
+          source venv/bin/activate
+          python scripts/main.py \
+            --gemini-api "$GEMINI_API_KEY" \
+            --youtube-channel "$YOUTUBE_CHANNEL_ID" \
+            --pixabay-api "$PIXABAY_API_KEY" \
+            --quantidade "$QUANTIDADE" | tee main_output.log
 
-   
-        - name: List Files After Video Generation
-          run: |
-            echo ">>> Listando arquivos no diretório atual:"
-            ls -la
-            echo ">>> Verificando a existência de 'video_final.mp4':"
-            ls -la | grep video_final.mp4 || echo "Arquivo 'video_final.mp4' não encontrado."
+      - name: List Files After Video Generation
+        run: |
+          echo ">>> Listando arquivos no diretório atual:"
+          ls -la
+          echo ">>> Verificando a existência de 'video_final.mp4':"
+          ls -la | grep video_final.mp4 || echo "Arquivo 'video_final.mp4' não encontrado."
 
-        - name: Upload to YouTube
-          if: success() && (steps.generate_video.outcome == 'success')
-          run: |
-            source venv/bin/activate
-            python scripts/upload_youtube.py \
-              --video-file "video_final.mp4" \
-              --client-secret-file "client_secret.json" \
-              --token-file "token.json" \
-              --title "Curiosidades do Dia" \
-              --description "Confira essas curiosidades incríveis!" \
-              --category "22" \
-              --tags "curiosidades,fatos,informação"
-          env:
-            YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
-    
-        - name: Post Run actions/checkout@v3
-          if: always()
-          uses: actions/checkout@v3
+      - name: Upload to YouTube
+        if: success() && (steps.generate_video.outcome == 'success')
+        run: |
+          source venv/bin/activate
+          python scripts/upload_youtube.py \
+            --video-file "video_final.mp4" \
+            --client-secret-file "client_secret.json" \
+            --token-file "token.json" \
+            --title "Curiosidades do Dia" \
+            --description "Confira essas curiosidades incríveis!" \
+            --category "22" \
+            --tags "curiosidades,fatos,informação"
+        env:
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}

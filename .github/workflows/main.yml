@@ -32,11 +32,35 @@ jobs:
     # Passo 3: Instalar Dependências
     - name: Install Dependencies
       run: |
+        # Remover o ambiente virtual existente, se houver
+        if [ -d "venv" ]; then
+          rm -rf venv
+        fi
+
+        # Criar um novo ambiente virtual
         python -m venv venv
         source venv/bin/activate
+
+        # Atualizar o pip
         pip install --upgrade pip
+
+        # Desinstalar a biblioteca conflitante, caso instalada
         pip uninstall -y google-ai-generativelanguage || echo "google-ai-generativelanguage não estava instalado."
+
+        # Verificar se a biblioteca foi desinstalada
+        if pip show google-ai-generativelanguage > /dev/null; then
+          echo "Erro: google-ai-generativelanguage ainda está instalado."
+          exit 1
+        else
+          echo "google-ai-generativelanguage desinstalado com sucesso ou não estava presente."
+        fi
+
+        # Instalar as dependências do projeto
         pip install --no-cache-dir -r requirements.txt
+
+        # Verificar as bibliotecas instaladas
+        echo ">>> Libraries installed:"
+        pip freeze
 
     # Passo 4: Configurar Git
     - name: Configure Git

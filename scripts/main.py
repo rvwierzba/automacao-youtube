@@ -19,6 +19,7 @@ def gerar_curiosidades_gemini(api_key, quantidade=5):
     """
     try:
         genai.configure(api_key=api_key)
+        print("Métodos disponíveis em google.generativeai após configuração:", dir(genai))  # Adiciona log
         prompt = f"Liste {quantidade} curiosidades interessantes e pouco conhecidas em português."
         response = genai.generate_text(
             model="text-bison-001",  # Utilize o modelo correto disponível para sua conta
@@ -84,91 +85,109 @@ def gerar_narracao(texto, idioma='pt'):
     Gera uma narração a partir do texto usando gTTS.
     Retorna o caminho para o arquivo de áudio gerado.
     """
-    tts = gTTS(texto, lang=idioma)
-    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_audio:
-        audio_path = tmp_audio.name
-    tts.save(audio_path)
-    return audio_path
+    try:
+        tts = gTTS(texto, lang=idioma)
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_audio:
+            audio_path = tmp_audio.name
+        tts.save(audio_path)
+        return audio_path
+    except Exception as e:
+        print(f"Erro ao gerar narração: {e}")
+        return None
 
 
 def criar_legenda(texto, imagem_saida="legenda.png"):
     """
     Cria uma imagem com o texto da legenda usando Pillow.
     """
-    # Configurações da legenda
-    largura, altura = 1280, 100  # Tamanho da imagem da legenda
-    fundo_cor = (30, 30, 30)     # Cor de fundo (cinza escuro)
-    texto_cor = (255, 255, 255)  # Cor do texto (branco)
-    fonte_tamanho = 40            # Tamanho da fonte
-
-    # Cria uma nova imagem RGB
-    img = Image.new('RGB', (largura, altura), color=fundo_cor)
-    d = ImageDraw.Draw(img)
-
-    # Tenta carregar uma fonte TrueType, senão usa a fonte padrão
     try:
-        fonte = ImageFont.truetype("arial.ttf", fonte_tamanho)
-    except IOError:
-        fonte = ImageFont.load_default()
+        # Configurações da legenda
+        largura, altura = 1280, 100  # Tamanho da imagem da legenda
+        fundo_cor = (30, 30, 30)     # Cor de fundo (cinza escuro)
+        texto_cor = (255, 255, 255)  # Cor do texto (branco)
+        fonte_tamanho = 40            # Tamanho da fonte
 
-    # Define o texto da legenda
-    legenda_texto = texto
+        # Cria uma nova imagem RGB
+        img = Image.new('RGB', (largura, altura), color=fundo_cor)
+        d = ImageDraw.Draw(img)
 
-    # Adiciona o texto à imagem, centralizado
-    text_width, text_height = d.textsize(legenda_texto, font=fonte)
-    position = ((largura - text_width) / 2, (altura - text_height) / 2)
-    d.text(position, legenda_texto, font=fonte, fill=texto_cor, align="center")
+        # Tenta carregar uma fonte TrueType, senão usa a fonte padrão
+        try:
+            fonte = ImageFont.truetype("arial.ttf", fonte_tamanho)
+        except IOError:
+            fonte = ImageFont.load_default()
 
-    # Salva a imagem da legenda
-    img.save(imagem_saida)
+        # Define o texto da legenda
+        legenda_texto = texto
+
+        # Adiciona o texto à imagem, centralizado
+        text_width, text_height = d.textsize(legenda_texto, font=fonte)
+        position = ((largura - text_width) / 2, (altura - text_height) / 2)
+        d.text(position, legenda_texto, font=fonte, fill=texto_cor, align="center")
+
+        # Salva a imagem da legenda
+        img.save(imagem_saida)
+    except Exception as e:
+        print(f"Erro ao criar legenda: {e}")
 
 
 def carregar_historico(caminho="used_curiosidades.txt"):
     """
     Carrega o histórico de curiosidades já utilizadas.
     """
-    if not os.path.exists(caminho):
+    try:
+        if not os.path.exists(caminho):
+            return set()
+        with open(caminho, 'r', encoding='utf-8') as f:
+            return set(line.strip() for line in f)
+    except Exception as e:
+        print(f"Erro ao carregar histórico: {e}")
         return set()
-    with open(caminho, 'r', encoding='utf-8') as f:
-        return set(line.strip() for line in f)
 
 
 def salvar_historico(curiosidades, caminho="used_curiosidades.txt"):
     """
     Salva as curiosidades utilizadas no histórico e faz commit no repositório.
     """
-    with open(caminho, 'a', encoding='utf-8') as f:
-        for curiosidade in curiosidades:
-            f.write(f"{curiosidade}\n")
-    
-    # Adiciona, faz commit e push do arquivo de histórico
-    subprocess.run(["git", "add", caminho], check=True)
-    subprocess.run(["git", "commit", "-m", f"Atualiza histórico de curiosidades: {', '.join(curiosidades)}"], check=True)
-    subprocess.run(["git", "push"], check=True)
+    try:
+        with open(caminho, 'a', encoding='utf-8') as f:
+            for curiosidade in curiosidades:
+                f.write(f"{curiosidade}\n")
+        
+        # Adiciona, faz commit e push do arquivo de histórico
+        subprocess.run(["git", "add", caminho], check=True)
+        subprocess.run(["git", "commit", "-m", f"Atualiza histórico de curiosidades: {', '.join(curiosidades)}"], check=True)
+        subprocess.run(["git", "push"], check=True)
+    except Exception as e:
+        print(f"Erro ao salvar histórico: {e}")
 
 
 def gerar_curiosidades_unicas(api_key, quantidade=5, caminho_historico="used_curiosidades.txt"):
     """
     Gera uma lista de curiosidades únicas usando a API do Gemini.
     """
-    historico = carregar_historico(caminho_historico)
-    curiosidades = []
-    tentativas = 0
-    max_tentativas = 10  # Para evitar loops infinitos
+    try:
+        historico = carregar_historico(caminho_historico)
+        curiosidades = []
+        tentativas = 0
+        max_tentativas = 10  # Para evitar loops infinitos
 
-    while len(curiosidades) < quantidade and tentativas < max_tentativas:
-        novas_curiosidades = gerar_curiosidades_gemini(api_key, quantidade=1)
-        if not novas_curiosidades:
-            break
-        curiosidade = novas_curiosidades[0]
-        if curiosidade not in historico and curiosidade not in curiosidades:
-            curiosidades.append(curiosidade)
-        tentativas += 1
+        while len(curiosidades) < quantidade and tentativas < max_tentativas:
+            novas_curiosidades = gerar_curiosidades_gemini(api_key, quantidade=1)
+            if not novas_curiosidades:
+                break
+            curiosidade = novas_curiosidades[0]
+            if curiosidade not in historico and curiosidade not in curiosidades:
+                curiosidades.append(curiosidade)
+            tentativas += 1
 
-    if curiosidades:
-        salvar_historico(curiosidades, caminho_historico)
-    
-    return curiosidades
+        if curiosidades:
+            salvar_historico(curiosidades, caminho_historico)
+        
+        return curiosidades
+    except Exception as e:
+        print(f"Erro ao gerar curiosidades únicas: {e}")
+        return []
 
 
 def criar_video(curiosidades, pixabay_api_key, video_saida="video_final.mp4"):
@@ -176,65 +195,72 @@ def criar_video(curiosidades, pixabay_api_key, video_saida="video_final.mp4"):
     Cria um vídeo a partir de uma lista de curiosidades.
     Cada curiosidade terá uma imagem e uma narração correspondente.
     """
-    print(f"Iniciando a criação do vídeo: {video_saida}")
-    clips = []
-    audios = []
-    
-    for index, curiosidade in enumerate(curiosidades, start=1):
-        titulo = f"Curiosidade {index}"
-        descricao = curiosidade
-        print(f"Processando: {titulo}")
+    try:
+        print(f"Iniciando a criação do vídeo: {video_saida}")
+        clips = []
+        audios = []
         
-        # Buscar imagem relacionada
-        imagem = buscar_imagem_pixabay(titulo, pixabay_api_key)
-        if not imagem:
-            # Tentar buscar uma imagem genérica se não encontrar
-            imagem = buscar_imagem_pixabay("natureza", pixabay_api_key)
+        for index, curiosidade in enumerate(curiosidades, start=1):
+            titulo = f"Curiosidade {index}"
+            descricao = curiosidade
+            print(f"Processando: {titulo}")
+            
+            # Buscar imagem relacionada
+            imagem = buscar_imagem_pixabay(titulo, pixabay_api_key)
             if not imagem:
-                print(f"Sem imagem para: {titulo} e também não foi possível buscar uma imagem genérica.")
+                # Tentar buscar uma imagem genérica se não encontrar
+                imagem = buscar_imagem_pixabay("natureza", pixabay_api_key)
+                if not imagem:
+                    print(f"Sem imagem para: {titulo} e também não foi possível buscar uma imagem genérica.")
+                    continue
+            
+            # Gerar narração
+            narracao = gerar_narracao(descricao)
+            if not narracao:
+                print(f"Falha ao gerar narração para: {titulo}")
                 continue
+            audios.append(AudioFileClip(narracao))
+            
+            # Criar legenda
+            criar_legenda(titulo, imagem_saida="legenda.png")
+            legenda_clip = ImageClip("legenda.png").set_duration(AudioFileClip(narracao).duration).set_position(("center", "bottom"))
+            
+            # Criar clipe de imagem
+            imagem_clip = ImageClip(imagem).set_duration(AudioFileClip(narracao).duration)
+            
+            # Combinar imagem e legenda
+            video_clip = CompositeVideoClip([imagem_clip, legenda_clip])
+            video_clip = video_clip.set_audio(AudioFileClip(narracao))
+            
+            clips.append(video_clip)
         
-        # Gerar narração
-        narracao = gerar_narracao(descricao)
-        audios.append(AudioFileClip(narracao))
+        if not clips:
+            print("Nenhum clipe foi criado. Verifique as curiosidades e as imagens.")
+            return False  # Indica falha na criação do vídeo
         
-        # Criar legenda
-        criar_legenda(titulo, imagem_saida="legenda.png")
-        legenda_clip = ImageClip("legenda.png").set_duration(AudioFileClip(narracao).duration).set_position(("center", "bottom"))
+        # Concatenar todos os clipes
+        final_video = concatenate_videoclips(clips, method="compose")
         
-        # Criar clipe de imagem
-        imagem_clip = ImageClip(imagem).set_duration(AudioFileClip(narracao).duration)
+        # Exportar o vídeo final
+        final_video.write_videofile(video_saida, fps=24)
+        print(f"Vídeo '{video_saida}' exportado com sucesso.")
         
-        # Combinar imagem e legenda
-        video_clip = CompositeVideoClip([imagem_clip, legenda_clip])
-        video_clip = video_clip.set_audio(AudioFileClip(narracao))
+        # Verificar se o vídeo foi criado
+        if not os.path.exists(video_saida):
+            print(f"Erro: O arquivo de vídeo '{video_saida}' não foi criado.")
+            return False
+        else:
+            print(f"Verificação: O arquivo '{video_saida}' foi encontrado.")
         
-        clips.append(video_clip)
-    
-    if not clips:
-        print("Nenhum clipe foi criado. Verifique as curiosidades e as imagens.")
-        return False  # Indica falha na criação do vídeo
-    
-    # Concatenar todos os clipes
-    final_video = concatenate_videoclips(clips, method="compose")
-    
-    # Exportar o vídeo final
-    final_video.write_videofile(video_saida, fps=24)
-    print(f"Vídeo '{video_saida}' exportado com sucesso.")
-    
-    # Verificar se o vídeo foi criado
-    if not os.path.exists(video_saida):
-        print(f"Erro: O arquivo de vídeo '{video_saida}' não foi criado.")
+        # Limpar arquivos temporários
+        for audio in audios:
+            os.remove(audio.filename)
+        os.remove("legenda.png")
+        
+        return True  # Indica sucesso na criação do vídeo
+    except Exception as e:
+        print(f"Erro ao criar vídeo: {e}")
         return False
-    else:
-        print(f"Verificação: O arquivo '{video_saida}' foi encontrado.")
-    
-    # Limpar arquivos temporários
-    for audio in audios:
-        os.remove(audio.filename)
-    os.remove("legenda.png")
-    
-    return True  # Indica sucesso na criação do vídeo
 
 
 def main():
@@ -251,26 +277,30 @@ def main():
     print(f"Pixabay API Key: {args.pixabay_api}")
     print(f"Quantidade: {args.quantidade}")
     
-    # Gerar curiosidades únicas dinamicamente
-    print("Iniciando o processo de geração de curiosidades...")
-    curiosidades = gerar_curiosidades_unicas(args.gemini_api, quantidade=args.quantidade, caminho_historico=args.historico)
-    
-    for i, curiosidade in enumerate(curiosidades, start=1):
-        print(f"Curiosidade {i}: {curiosidade}")
-    
-    if not curiosidades:
-        print("Nenhuma curiosidade única foi gerada.")
-        exit(1)  # Saída com erro
-    
-    # Criar o vídeo
-    sucesso = criar_video(curiosidades, args.pixabay_api)
-    
-    if not sucesso:
-        print("Falha na criação do vídeo.")
-        exit(1)  # Saída com erro
-    
-    print("Processo concluído com sucesso!")
-    exit(0)  # Saída com sucesso
+    try:
+        # Gerar curiosidades únicas dinamicamente
+        print("Iniciando o processo de geração de curiosidades...")
+        curiosidades = gerar_curiosidades_unicas(args.gemini_api, quantidade=args.quantidade, caminho_historico=args.historico)
+        
+        if not curiosidades:
+            print("Nenhuma curiosidade única foi gerada.")
+            exit(1)  # Saída com erro
+        
+        for i, curiosidade in enumerate(curiosidades, start=1):
+            print(f"Curiosidade {i}: {curiosidade}")
+        
+        # Criar o vídeo
+        sucesso = criar_video(curiosidades, args.pixabay_api)
+        
+        if not sucesso:
+            print("Falha na criação do vídeo.")
+            exit(1)  # Saída com erro
+        
+        print("Processo concluído com sucesso!")
+        exit(0)  # Saída com sucesso
+    except Exception as e:
+        print(f"Erro no processo principal: {e}")
+        exit(1)
 
 
 if __name__ == "__main__":

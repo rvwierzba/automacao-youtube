@@ -10,7 +10,7 @@ on:
     inputs:
       quantidade:
         description: 'Número de curiosidades a gerar'
-        required: true
+        required: false
         default: '5'
 
 jobs:
@@ -65,19 +65,28 @@ jobs:
         # Adicionar debug para verificar métodos disponíveis
         python -c "import google.generativeai as genai; genai.configure(api_key='$GEMINI_API_KEY'); print('Métodos disponíveis em google.generativeai:', dir(genai))"
 
+        # Definir quantidade com base nos inputs ou usar o padrão
+        if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+          QUANTIDADE="${{ github.event.inputs.quantidade }}"
+        else
+          QUANTIDADE="5"
+        fi
+
+        echo "Quantidade de curiosidades a gerar: $QUANTIDADE"
+
         # Gera vídeo
         python scripts/main.py \
           --gemini-api "$GEMINI_API_KEY" \
           --youtube-channel "$YOUTUBE_CHANNEL_ID" \
           --pixabay-api "$PIXABAY_API_KEY" \
-          --quantidade "${{ github.event.inputs.quantidade }}"  # Usa o input definido
+          --quantidade "$QUANTIDADE"
 
       env:
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
         PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
 
-    # Novo Passo: Listar Arquivos Após Geração do Vídeo
+    # Passo 8: Listar Arquivos Após Geração do Vídeo
     - name: List Files After Video Generation
       run: |
         echo ">>> Listando arquivos no diretório atual:"
@@ -85,7 +94,7 @@ jobs:
         echo ">>> Verificando a existência de 'video_final.mp4':"
         ls -la | grep video_final.mp4 || echo "Arquivo 'video_final.mp4' não encontrado."
 
-    # Passo 8: Fazer Upload no YouTube (Só se o Passo Anterior Tiver Sucesso)
+    # Passo 9: Fazer Upload no YouTube (Só se o Passo Anterior Tiver Sucesso)
     - name: Upload to YouTube
       if: success() && steps.generate_video.outcome == 'success'
       run: |

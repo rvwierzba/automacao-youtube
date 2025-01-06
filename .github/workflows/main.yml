@@ -45,55 +45,35 @@ jobs:
     - name: Generate Video
       run: |
         source venv/bin/activate
-        echo ">>> pip freeze debug:"
-        pip freeze
-        # Adicionar debug para verificar métodos disponíveis
-        python -c "import google.generativeai as genai; genai.configure(api_key='$GEMINI_API_KEY'); print('Métodos disponíveis em google.generativeai:', dir(genai))"
-        
-        # Definir quantidade com base nos inputs ou usar o padrão
-        if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-          QUANTIDADE="${{ github.event.inputs.quantidade }}"
-        else
-          QUANTIDADE="5"
-        fi
-
-        echo "Quantidade de curiosidades a gerar: $QUANTIDADE"
-
-        # Gera vídeo
         python scripts/main.py \
           --gemini-api "$GEMINI_API_KEY" \
           --youtube-channel "$YOUTUBE_CHANNEL_ID" \
           --pixabay-api "$PIXABAY_API_KEY" \
-          --quantidade "$QUANTIDADE"
+          --quantidade "$QUANTIDADE" | tee main_output.log
 
-        # Verificar se o vídeo foi criado
-        if [ ! -f "video_final.mp4" ]; then
-          echo "Erro: 'video_final.mp4' não foi criado."
-          exit 1
-        fi
+   
+        - name: List Files After Video Generation
+          run: |
+            echo ">>> Listando arquivos no diretório atual:"
+            ls -la
+            echo ">>> Verificando a existência de 'video_final.mp4':"
+            ls -la | grep video_final.mp4 || echo "Arquivo 'video_final.mp4' não encontrado."
 
-    - name: List Files After Video Generation
-      run: |
-        echo ">>> Listando arquivos no diretório atual:"
-        ls -la
-        echo ">>> Verificando a existência de 'video_final.mp4':"
-        ls -la | grep video_final.mp4 || echo "Arquivo 'video_final.mp4' não encontrado."
-
-    - name: Upload to YouTube
-      if: success() && (steps.generate_video.outcome == 'success')
-      run: |
-        source venv/bin/activate
-        python scripts/upload_youtube.py \
-          --video-file "video_final.mp4" \
-          --client-secret-file "client_secret.json" \
-          --token-file "token.json" \
-          --title "Curiosidades do Dia" \
-          --description "Confira essas curiosidades incríveis!" \
-          --category "22" \
-          --tags "curiosidades,fatos,informação"
-      env:
-        YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
-
-    - name: Post Run actions/checkout@v3
-      if: always()
-      uses: actions/checkout@v3
+        - name: Upload to YouTube
+          if: success() && (steps.generate_video.outcome == 'success')
+          run: |
+            source venv/bin/activate
+            python scripts/upload_youtube.py \
+              --video-file "video_final.mp4" \
+              --client-secret-file "client_secret.json" \
+              --token-file "token.json" \
+              --title "Curiosidades do Dia" \
+              --description "Confira essas curiosidades incríveis!" \
+              --category "22" \
+              --tags "curiosidades,fatos,informação"
+          env:
+            YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+    
+        - name: Post Run actions/checkout@v3
+          if: always()
+          uses: actions/checkout@v3

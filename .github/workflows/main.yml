@@ -55,8 +55,24 @@ jobs:
         run: |
           echo ">>> Listando arquivos no diretório atual:"
           ls -la
+          echo ">>> Listando arquivos no diretório de saída (se houver):"
+          if [ -d "output" ]; then
+            ls -la output/
+          else
+            echo "Diretório 'output' não encontrado."
+          fi
           echo ">>> Verificando a existência de 'video_final.mp4':"
           ls -la | grep video_final.mp4 || echo "Arquivo 'video_final.mp4' não encontrado."
+
+      - name: Exibir Logs da Geração do Vídeo
+        run: |
+          echo ">>> Exibindo logs da geração do vídeo:"
+          cat main_output.log
+
+      - name: Verificar Dependências Instaladas
+        run: |
+          source venv/bin/activate
+          pip list
 
       - name: Upload to YouTube
         if: success() && (steps.generate_video.outcome == 'success')

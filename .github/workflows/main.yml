@@ -35,11 +35,13 @@ jobs:
         # Remover o ambiente virtual existente, se houver
         if [ -d "venv" ]; then
           rm -rf venv
+          echo "Ambiente virtual antigo removido."
         fi
 
         # Criar um novo ambiente virtual
         python -m venv venv
         source venv/bin/activate
+        echo "Novo ambiente virtual criado e ativado."
 
         # Atualizar o pip
         pip install --upgrade pip

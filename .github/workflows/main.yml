@@ -35,6 +35,7 @@ jobs:
         python -m venv venv
         source venv/bin/activate
         pip install --upgrade pip
+        pip uninstall -y google-ai-generativelanguage || echo "google-ai-generativelanguage não estava instalado."
         pip install --no-cache-dir -r requirements.txt
 
     # Passo 4: Configurar Git

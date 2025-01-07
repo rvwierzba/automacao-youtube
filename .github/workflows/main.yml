@@ -1,28 +1,34 @@
-name: Build and Upload Video
+name: Automação YouTube
 
+# Evento que dispara o workflow: push na branch main
 on:
   push:
     branches:
       - main
-  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
+    # Definição de variáveis de ambiente
+    env:
+      QUANTIDADE: 10  # Defina o valor desejado para QUANTIDADE aqui
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
+      PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+
     steps:
-      # Step 1: Checkout the repository
+      # 1. Checkout do repositório
       - name: Checkout repository
         uses: actions/checkout@v3
-
-      # Step 2: Set up Python
+      
+      # 2. Configuração do Python
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
-          check-latest: false
 
-      # Step 3: Install Dependencies
+      # 3. Instalação das dependências
       - name: Install Dependencies
         run: |
           python -m venv venv
@@ -30,30 +36,25 @@ jobs:
           pip install --upgrade pip
           pip install --no-cache-dir -r requirements.txt
 
-      # Step 4: Configure Git
+      # 4. Configuração do Git
       - name: Configure Git
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
 
-      # Step 5: Create Client Secret File
+      # 5. Criação do Arquivo de Segredo do Cliente
       - name: Create Client Secret File
         run: |
           echo "${{ secrets.CLIENT_SECRET_FILE_FIZZQUIRK }}" | base64 --decode > client_secret.json
 
-      # Step 6: Create Token File
+      # 6. Criação do Arquivo de Token
       - name: Create Token File
         run: |
           echo "${{ secrets.TOKEN_FILE_FIZZQUIRK }}" | base64 --decode > token.json
 
-      # Step 7: Generate Video
+      # 7. Geração do Vídeo
       - name: Generate Video
-        id: generate_video
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
-          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
-          QUANTIDADE: ${{ secrets.QUANTIDADE }}
+        id: generate_video  # ID para referenciar o passo posteriormente
         run: |
           source venv/bin/activate
           echo "Iniciando a geração do vídeo com as seguintes variáveis:"
@@ -67,7 +68,7 @@ jobs:
             --pixabay-api "$PIXABAY_API_KEY" \
             --quantidade "$QUANTIDADE" | tee main_output.log
 
-      # Step 8: Verify Video Generation
+      # 8. Verificação da Geração do Vídeo
       - name: Verify Video Generation
         run: |
           if [ ! -f "video_final.mp4" ]; then
@@ -77,57 +78,36 @@ jobs:
             echo "Arquivo 'video_final.mp4' encontrado com sucesso."
           fi
 
-      # Step 9: Listar Arquivos Após Geração do Vídeo
+      # 9. Listar Arquivos Após Geração do Vídeo (para depuração)
       - name: Listar Arquivos Após Geração do Vídeo
-        run: |
-          echo ">>> Listando arquivos no diretório atual:"
-          ls -la
-          echo ">>> Listando arquivos no diretório de saída (se houver):"
-          if [ -d "output" ]; then
-            ls -la output/
-          else
-            echo "Diretório 'output' não encontrado."
-          fi
-          echo ">>> Verificando a existência de 'video_final.mp4':"
-          ls -la | grep video_final.mp4 || echo "Arquivo 'video_final.mp4' não encontrado."
+        if: success()
+        run: ls -la
 
-      # Step 10: Exibir Logs da Geração do Vídeo
+      # 10. Exibir Logs da Geração do Vídeo
       - name: Exibir Logs da Geração do Vídeo
-        run: |
-          echo ">>> Exibindo logs da geração do vídeo:"
-          cat main_output.log || echo "Arquivo 'main_output.log' não encontrado."
+        if: success()
+        run: cat main_output.log
 
-      # Step 11: Verificar Dependências Instaladas
+      # 11. Verificar Dependências Instaladas
       - name: Verificar Dependências Instaladas
-        run: |
-          source venv/bin/activate
-          pip list
+        if: success()
+        run: pip list
 
-      # Step 12: Upload to YouTube
+      # 12. Upload para o YouTube
       - name: Upload to YouTube
         if: success() && steps.generate_video.outcome == 'success'
-        env:
-          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
         run: |
-          source venv/bin/activate
-          echo "Iniciando upload para o YouTube..."
-          python scripts/upload_youtube.py \
-            --video-file "video_final.mp4" \
-            --client-secret-file "client_secret.json" \
-            --token-file "token.json" \
-            --title "Curiosidades do Dia" \
-            --description "Confira essas curiosidades incríveis!" \
-            --category "22" \
-            --tags "curiosidades,fatos,informação"
+          # Adicione aqui os comandos para fazer upload para o YouTube
+          echo "Upload para o YouTube não implementado."
 
-      # Step 13: Post Set up Python (opcional)
+      # 13. Passo Pós Configuração do Python (Sempre Executado)
       - name: Post Set up Python
         if: always()
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
 
-      # Step 14: Post Checkout repository (opcional)
+      # 14. Passo Pós Checkout do Repositório (Sempre Executado)
       - name: Post Checkout repository
         if: always()
         run: |

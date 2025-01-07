@@ -1,23 +1,35 @@
+# .github/workflows/main.yml
+
 name: Automação YouTube
 
 on:
-  push:
-    branches:
-      - main
+  schedule:
+    - cron: '0 6 * * *'   # 6:00 AM UTC
+    - cron: '0 18 * * *'  # 6:00 PM UTC
+  workflow_dispatch:
+    inputs:
+      quantidade:
+        description: 'Número de curiosidades a gerar'
+        required: true
+        default: '5'
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Permite que o workflow faça commit e push
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
+    # Passo 1: Checkout do Repositório
+    - uses: actions/checkout@v3
 
+    # Passo 2: Configurar o Python
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.9'
+        python-version: '3.9'  # Ajuste conforme necessário
 
+    # Passo 3: Instalar Dependências
     - name: Install Dependencies
       run: |
         python -m venv venv
@@ -25,62 +37,59 @@ jobs:
         pip install --upgrade pip
         pip install --no-cache-dir -r requirements.txt
 
+    # Passo 4: Configurar Git
     - name: Configure Git
       run: |
         git config --global user.name "GitHub Actions"
         git config --global user.email "actions@github.com"
 
+    # Passo 5: Criar Arquivo client_secret.json a partir do Segredo Base64
     - name: Create Client Secret File
       run: |
         echo "${{ secrets.CLIENT_SECRET_FILE_FIZZQUIRK }}" | base64 --decode > client_secret.json
 
+    # Passo 6: Criar Arquivo token.json a partir do Segredo Base64
     - name: Create Token File
       run: |
         echo "${{ secrets.TOKEN_FILE_FIZZQUIRK }}" | base64 --decode > token.json
 
+    # Passo 7: Gerar Vídeo
     - name: Generate Video
+      id: generate_video
       run: |
         source venv/bin/activate
+        echo ">>> pip freeze debug:"
+        pip freeze
+
+        # Adicionar debug para verificar métodos disponíveis
+        python -c "import google.generativeai as genai; genai.configure(api_key='$GEMINI_API_KEY'); print('Métodos disponíveis em google.generativeai:', dir(genai))"
+
+        # Gera vídeo
         python scripts/main.py \
           --gemini-api "$GEMINI_API_KEY" \
           --youtube-channel "$YOUTUBE_CHANNEL_ID" \
           --pixabay-api "$PIXABAY_API_KEY" \
-          --quantidade "$QUANTIDADE" | tee main_output.log
+          --quantidade "${{ github.event.inputs.quantidade }}"  # Usa o input definido
 
-    - name: Verify Video Generation
-      run: |
-        if [ ! -f "video_final.mp4" ]; then
-          echo "Erro: O arquivo de vídeo 'video_final.mp4' não foi encontrado."
-          exit 1
-        fi
+      env:
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
+        PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
 
-    - name: Listar Arquivos Após Geração do Vídeo
+    # Novo Passo: Listar Arquivos Após Geração do Vídeo
+    - name: List Files After Video Generation
       run: |
         echo ">>> Listando arquivos no diretório atual:"
         ls -la
-        echo ">>> Listando arquivos no diretório de saída (se houver):"
-        if [ -d "output" ]; then
-          ls -la output/
-        else
-          echo "Diretório 'output' não encontrado."
-        fi
         echo ">>> Verificando a existência de 'video_final.mp4':"
         ls -la | grep video_final.mp4 || echo "Arquivo 'video_final.mp4' não encontrado."
 
-    - name: Exibir Logs da Geração do Vídeo
-      run: |
-        echo ">>> Exibindo logs da geração do vídeo:"
-        cat main_output.log
-
-    - name: Verificar Dependências Instaladas
-      run: |
-        source venv/bin/activate
-        pip list
-
+    # Passo 8: Fazer Upload no YouTube (Só se o Passo Anterior Tiver Sucesso)
     - name: Upload to YouTube
       if: success() && steps.generate_video.outcome == 'success'
       run: |
         source venv/bin/activate
+
         python scripts/upload_youtube.py \
           --video-file "video_final.mp4" \
           --client-secret-file "client_secret.json" \
@@ -91,9 +100,3 @@ jobs:
           --tags "curiosidades,fatos,informação"
       env:
         YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
-
-    - name: Post Set up Python
-      if: always()
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'

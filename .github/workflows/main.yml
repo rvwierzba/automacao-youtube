@@ -1,6 +1,5 @@
 name: Automação YouTube
 
-# Evento que dispara o workflow: push na branch main
 on:
   push:
     branches:
@@ -21,7 +20,7 @@ jobs:
       # 1. Checkout do repositório
       - name: Checkout repository
         uses: actions/checkout@v3
-      
+
       # 2. Configuração do Python
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -71,6 +70,7 @@ jobs:
       # 8. Verificação da Geração do Vídeo
       - name: Verify Video Generation
         run: |
+          echo "Verificando a geração do vídeo..."
           if [ ! -f "video_final.mp4" ]; then
             echo "Erro: O arquivo de vídeo 'video_final.mp4' não foi encontrado."
             exit 1
@@ -78,10 +78,15 @@ jobs:
             echo "Arquivo 'video_final.mp4' encontrado com sucesso."
           fi
 
-      # 9. Listar Arquivos Após Geração do Vídeo (para depuração)
-      - name: Listar Arquivos Após Geração do Vídeo
-        if: success()
-        run: ls -la
+      # 9. Passo de Depuração: Listar Arquivos e Diretórios
+      - name: List Files and Directories
+        run: |
+          echo "Diretório Atual:"
+          pwd
+          echo "Conteúdo do Diretório Atual:"
+          ls -la
+          echo "Conteúdo de Subdiretórios:"
+          find . -type f
 
       # 10. Exibir Logs da Geração do Vídeo
       - name: Exibir Logs da Geração do Vídeo
@@ -100,16 +105,19 @@ jobs:
           # Adicione aqui os comandos para fazer upload para o YouTube
           echo "Upload para o YouTube não implementado."
 
-      # 13. Passo Pós Configuração do Python (Sempre Executado)
+      # 13. Passos Pós Execução
       - name: Post Set up Python
         if: always()
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
 
-      # 14. Passo Pós Checkout do Repositório (Sempre Executado)
       - name: Post Checkout repository
         if: always()
         run: |
           git config --global --add safe.directory /home/runner/work/automacao-youtube/automacao-youtube
+
+      - name: Complete job
+        if: always()
+        run: echo "Workflow concluído."
 

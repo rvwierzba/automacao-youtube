@@ -44,16 +44,6 @@ jobs:
       - name: Listar Arquivos Antes da Geração do Vídeo
         run: ls -la
 
-      - name: Depuração das Variáveis de Ambiente
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
-          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
-        run: |
-          echo "GEMINI_API_KEY: $GEMINI_API_KEY"
-          echo "YOUTUBE_CHANNEL_ID: $YOUTUBE_CHANNEL_ID"
-          echo "PIXABAY_API_KEY: $PIXABAY_API_KEY"
-
       - name: Generate Video
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}

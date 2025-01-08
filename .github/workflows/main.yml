@@ -3,28 +3,14 @@ name: Automação YouTube
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:
-    inputs:
-      quantidade:
-        description: 'Quantidade de vídeos para gerar'
-        required: false
-        default: '10'
-      gemini_api_key:
-        description: 'Chave API do Gemini'
-        required: false
-      youtube_channel_id:
-        description: 'ID do Canal do YouTube'
-        required: false
-      pixabay_api_key:
-        description: 'Chave API do Pixabay'
-        required: false
+  workflow_dispatch:  # Habilita execução manual sem inputs para secrets
 
 jobs:
   build:
     runs-on: ubuntu-24.04
 
     env:
-      QUANTIDADE: ${{ github.event.inputs.quantidade || 10 }}  # Usa input ou valor padrão
+      QUANTIDADE: 10  # Variável de ambiente fixa
 
     steps:
       - name: Checkout repository
@@ -61,9 +47,9 @@ jobs:
 
       - name: Depuração das Variáveis de Ambiente
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || github.event.inputs.gemini_api_key }}
-          YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID || github.event.inputs.youtube_channel_id }}
-          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY || github.event.inputs.pixabay_api_key }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
         run: |
           echo "GEMINI_API_KEY: $GEMINI_API_KEY"
           echo "YOUTUBE_CHANNEL_ID: $YOUTUBE_CHANNEL_ID"
@@ -71,9 +57,9 @@ jobs:
 
       - name: Generate Video
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || github.event.inputs.gemini_api_key }}
-          YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID || github.event.inputs.youtube_channel_id }}
-          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY || github.event.inputs.pixabay_api_key }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
           QUANTIDADE: ${{ env.QUANTIDADE }}
         run: |
           source venv/bin/activate

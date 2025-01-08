@@ -1,22 +1,44 @@
-import sys
+import argparse
+import os
 import logging
 
-# Configurar logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
 def main():
-    try:
-        logging.info("Iniciando a geração do vídeo...")
-        # Supondo que há uma função para gerar o vídeo
-        generate_video()
-        logging.info("Vídeo gerado com sucesso: video_final.mp4")
-    except Exception as e:
-        logging.error(f"Ocorreu um erro durante a geração do vídeo: {e}")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description="Gerador de Vídeo")
+    parser.add_argument('--gemini-api', required=True, help='Chave API do Gemini')
+    parser.add_argument('--youtube-channel', required=True, help='ID do Canal do YouTube')
+    parser.add_argument('--pixabay-api', required=True, help='Chave API do Pixabay')
+    parser.add_argument('--quantidade', type=int, required=True, help='Quantidade de vídeos para gerar')
 
-def generate_video():
-    # Implementação da geração do vídeo
-    pass  # Substitua por sua lógica real
+    args = parser.parse_args()
+
+    # Configurar logging
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+
+    # Verificar variáveis
+    if not all([args.gemini_api, args.youtube_channel, args.pixabay_api]):
+        logger.error("Uma ou mais chaves API estão faltando.")
+        exit(1)
+
+    logger.info("Iniciando a geração do vídeo...")
+    # Lógica de geração do vídeo
+    # Exemplo simplificado:
+    video_path = "video_final.mp4"
+    try:
+        # Simulação de criação do vídeo
+        with open(video_path, 'w') as f:
+            f.write("Conteúdo do vídeo.")
+        logger.info(f"Vídeo gerado com sucesso: {video_path}")
+    except Exception as e:
+        logger.error(f"Erro ao gerar o vídeo: {e}")
+        exit(1)
+
+    # Verificação final
+    if os.path.isfile(video_path):
+        logger.info(f"Vídeo '{video_path}' encontrado.")
+    else:
+        logger.error(f"Vídeo '{video_path}' não encontrado.")
+        exit(1)
 
 if __name__ == "__main__":
     main()

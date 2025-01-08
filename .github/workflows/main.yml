@@ -3,13 +3,28 @@ name: Automação YouTube
 on:
   push:
     branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      quantidade:
+        description: 'Quantidade de vídeos para gerar'
+        required: false
+        default: '10'
+      gemini_api_key:
+        description: 'Chave API do Gemini'
+        required: false
+      youtube_channel_id:
+        description: 'ID do Canal do YouTube'
+        required: false
+      pixabay_api_key:
+        description: 'Chave API do Pixabay'
+        required: false
 
 jobs:
   build:
     runs-on: ubuntu-24.04
 
     env:
-      QUANTIDADE: 10  # Variável de ambiente fixa
+      QUANTIDADE: ${{ github.event.inputs.quantidade || 10 }}  # Usa input ou valor padrão
 
     steps:
       - name: Checkout repository
@@ -44,14 +59,26 @@ jobs:
       - name: Listar Arquivos Antes da Geração do Vídeo
         run: ls -la
 
+      - name: Depuração das Variáveis de Ambiente
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || github.event.inputs.gemini_api_key }}
+          YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID || github.event.inputs.youtube_channel_id }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY || github.event.inputs.pixabay_api_key }}
+        run: |
+          echo "GEMINI_API_KEY: $GEMINI_API_KEY"
+          echo "YOUTUBE_CHANNEL_ID: $YOUTUBE_CHANNEL_ID"
+          echo "PIXABAY_API_KEY: $PIXABAY_API_KEY"
+
       - name: Generate Video
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
-          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || github.event.inputs.gemini_api_key }}
+          YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID || github.event.inputs.youtube_channel_id }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY || github.event.inputs.pixabay_api_key }}
           QUANTIDADE: ${{ env.QUANTIDADE }}
         run: |
           source venv/bin/activate
+          pwd
+          ls -la
           echo "Iniciando a geração do vídeo com as seguintes variáveis:"
           echo "GEMINI_API_KEY: $GEMINI_API_KEY"
           echo "YOUTUBE_CHANNEL_ID: $YOUTUBE_CHANNEL_ID"
@@ -70,6 +97,9 @@ jobs:
             echo "Erro: O vídeo não foi gerado."
             exit 1
           fi
+
+          pwd
+          ls -la
 
       - name: Listar Arquivos Após a Geração do Vídeo
         run: ls -la

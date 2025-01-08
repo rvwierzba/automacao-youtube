@@ -52,25 +52,36 @@ jobs:
             --pixabay-api "$PIXABAY_API_KEY" \
             --quantidade "$QUANTIDADE" | tee main_output.log
 
+          # Verificação imediata
+          if [ -f "video_final.mp4" ]; then
+            echo "Vídeo gerado com sucesso: video_final.mp4"
+          else
+            echo "Erro: O vídeo não foi gerado."
+            exit 1
+          fi
+
+      - name: Listar Arquivos Após Geração do Vídeo
+        run: ls -la
+
       - name: Verify Video Generation
         run: |
           echo "Verificando a geração do vídeo..."
           if [ ! -f "video_final.mp4" ]; then
             echo "Erro: O arquivo de vídeo 'video_final.mp4' não foi encontrado."
+            echo "Listando arquivos para depuração:"
+            ls -la
             exit 1
           else
             echo "Arquivo 'video_final.mp4' encontrado com sucesso."
           fi
 
-      - name: Listar Arquivos
+      - name: Listar Arquivos (se falhar)
         if: failure()
         run: ls -la
 
       - name: Exibir Logs da Geração do Vídeo
         if: failure()
         run: cat main_output.log
-
-      # Outras etapas...
 
       - name: Complete job
         run: echo "Workflow concluído."

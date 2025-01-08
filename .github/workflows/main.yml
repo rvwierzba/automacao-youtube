@@ -1,15 +1,13 @@
-name: Build
+name: Automação YouTube
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-    env:
-      QUANTIDADE: 10  # Variável não sensível
+    runs-on: ubuntu-24.04
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -17,7 +15,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.9'
+          python-version: 3.9
 
       - name: Install Dependencies
         run: |
@@ -32,22 +30,18 @@ jobs:
           git config --global user.email "actions@github.com"
 
       - name: Create Client Secret File
-        run: |
-          echo "${{ secrets.CLIENT_SECRET_FILE_FIZZQUIRK }}" | base64 --decode > client_secret.json
+        run: echo "${{ secrets.CLIENT_SECRET_FILE_FIZZQUIRK }}" | base64 --decode > client_secret.json
 
       - name: Create Token File
-        run: |
-          echo "${{ secrets.TOKEN_FILE_FIZZQUIRK }}" | base64 --decode > token.json
+        run: echo "${{ secrets.TOKEN_FILE_FIZZQUIRK }}" | base64 --decode > token.json
 
       - name: Mostrar Diretório Atual Antes da Geração do Vídeo
         run: pwd
 
+      - name: Listar Arquivos Antes da Geração do Vídeo
+        run: ls -la
+
       - name: Generate Video
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
-          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
-          QUANTIDADE: ${{ env.QUANTIDADE }}
         run: |
           source venv/bin/activate
           echo "Iniciando a geração do vídeo com as seguintes variáveis:"
@@ -69,10 +63,7 @@ jobs:
             exit 1
           fi
 
-      - name: Mostrar Diretório Atual Após a Geração do Vídeo
-        run: pwd
-
-      - name: Listar Arquivos Após Geração do Vídeo
+      - name: Listar Arquivos Após a Geração do Vídeo
         run: ls -la
 
       - name: Verify Video Generation

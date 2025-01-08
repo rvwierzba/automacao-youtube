@@ -8,7 +8,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
+    env:
+      QUANTIDADE: 10  # Variável não sensível
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -38,7 +39,15 @@ jobs:
         run: |
           echo "${{ secrets.TOKEN_FILE_FIZZQUIRK }}" | base64 --decode > token.json
 
+      - name: Mostrar Diretório Atual Antes da Geração do Vídeo
+        run: pwd
+
       - name: Generate Video
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+          QUANTIDADE: ${{ env.QUANTIDADE }}
         run: |
           source venv/bin/activate
           echo "Iniciando a geração do vídeo com as seguintes variáveis:"
@@ -60,6 +69,9 @@ jobs:
             exit 1
           fi
 
+      - name: Mostrar Diretório Atual Após a Geração do Vídeo
+        run: pwd
+
       - name: Listar Arquivos Após Geração do Vídeo
         run: ls -la
 
@@ -75,9 +87,8 @@ jobs:
             echo "Arquivo 'video_final.mp4' encontrado com sucesso."
           fi
 
-      - name: Listar Arquivos (se falhar)
-        if: failure()
-        run: ls -la
+      - name: Verificar Espaço em Disco
+        run: df -h
 
       - name: Exibir Logs da Geração do Vídeo
         if: failure()

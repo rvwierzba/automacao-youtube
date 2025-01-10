@@ -1,4 +1,4 @@
-name: Automação de Vídeos para YouTube
+name: Automação YouTube
 
 on:
   push:
@@ -7,102 +7,61 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-
+    runs-on: ubuntu-24.04
     steps:
-    - name: Checkout do repositório
-      uses: actions/checkout@v3
+      - name: Checkout do repositório
+        uses: actions/checkout@v3
 
-    - name: Configurar Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
+      - name: Configurar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.9
 
-    - name: Instalar Dependências
-      run: |
-        python -m venv venv
-        source venv/bin/activate
-        pip install --upgrade pip
-        pip install -r requirements.txt
+      - name: Instalar Dependências
+        run: |
+          python -m venv venv
+          source venv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements.txt
 
-    - name: Configurar Git
-      run: |
-        git config --global user.name "GitHub Actions"
-        git config --global user.email "actions@github.com"
+      - name: Configurar Git
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
 
-    - name: Criar Pasta de Credenciais
-      run: mkdir -p credentials
+      - name: Criar Pasta de Credenciais
+        run: mkdir -p credentials
 
-    - name: Decodificar Client Secret
-      run: |
-        echo "$CANAL1_CLIENT_SECRET" | base64 --decode > credentials/canal1_client_secret.json
-      shell: bash
-      env:
-        CANAL1_CLIENT_SECRET: ${{ secrets.CANAL1_CLIENT_SECRET }}
+      - name: Decodificar Client Secret
+        run: echo "$CANAL1_CLIENT_SECRET" | base64 --decode > credentials/canal1_client_secret.json
+        env:
+          CANAL1_CLIENT_SECRET: ${{ secrets.CANAL1_CLIENT_SECRET }}
 
-    - name: Decodificar Token
-      run: |
-        echo "$CANAL1_TOKEN" | base64 --decode > credentials/canal1_token.json
-      shell: bash
-      env:
-        CANAL1_TOKEN: ${{ secrets.CANAL1_TOKEN }}
+      - name: Decodificar Token
+        run: echo "$CANAL1_TOKEN" | base64 --decode > credentials/canal1_token.json
+        env:
+          CANAL1_TOKEN: ${{ secrets.CANAL1_TOKEN }}
 
-    - name: Validar Arquivos de Credenciais
-      run: |
-        # Instalar jq para validar JSON
-        sudo apt-get update
-        sudo apt-get install -y jq
+      - name: Validar Arquivos de Credenciais
+        run: |
+          # Instalar jq para validar JSON
+          sudo apt-get update
+          sudo apt-get install -y jq
 
-        # Verificar se client_secret.json está bem formado
-        jq empty credentials/canal1_client_secret.json || { echo "Erro: client_secret.json está malformado."; exit 1; }
+          # Verificar se client_secret.json está bem formado
+          jq empty credentials/canal1_client_secret.json || { echo "Erro: client_secret.json está malformado."; exit 1; }
 
-        # Verificar campos essenciais
-        REQUIRED_FIELDS=("token_uri" "client_email")
-        for field in "${REQUIRED_FIELDS[@]}"; do
-          value=$(jq -r ."${field}" credentials/canal1_client_secret.json)
-          if [[ "$value" == "null" || -z "$value" ]]; then
-            echo "Erro: Campo '${field}' está ausente no client_secret.json."
-            exit 1
-          fi
-        done
+          # Verificar campos essenciais
+          REQUIRED_FIELDS=("token_uri" "client_email")
+          for field in "${REQUIRED_FIELDS[@]}"; do
+            value=$(jq -r ."${field}" credentials/canal1_client_secret.json)
+            if [[ "$value" == "null" || -z "$value" ]]; then
+              echo "Erro: Campo '${field}' está ausente no client_secret.json."
+              exit 1
+            fi
+          done
+          echo "client_secret.json validado com sucesso."
 
-        echo "client_secret.json validado com sucesso."
-
-        # Verificar se token.json está bem formado
-        jq empty credentials/canal1_token.json || { echo "Erro: token.json está malformado."; exit 1; }
-
-        echo "token.json validado com sucesso."
-      shell: bash
-
-    - name: Gerar Vídeo e Fazer Upload para o YouTube
-      run: |
-        source venv/bin/activate
-        python scripts/main.py \
-          --gemini-api "$GEMINI_API_KEY" \
-          --youtube-channel "$YOUTUBE_CHANNEL_ID" \
-          --pixabay-api "$PIXABAY_API_KEY" \
-          --quantidade "$QUANTIDADE" | tee main_output.log
-      env:
-        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
-        PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
-        QUANTIDADE: 10  # Ajuste conforme necessário
-
-    - name: Verificar Geração do Vídeo
-      run: |
-        if [ ! -f "video_final.mp4" ]; then
-          echo "Erro: O arquivo de vídeo 'video_final.mp4' não foi encontrado."
-          ls -la
-          exit 1
-        else
-          echo "Arquivo 'video_final.mp4' encontrado com sucesso."
-        fi
-      shell: bash
-
-    - name: Verificar Espaço em Disco
-      run: df -h
-      shell: bash
-
-    - name: Completar Job
-      run: echo "Workflow concluído."
-      shell: bash
+          # Verificar se token.json está bem formado
+          jq empty credentials/canal1_token.json || { echo "Erro: token.json está malformado."; exit 1; }
+          echo "token.json validado com sucesso."

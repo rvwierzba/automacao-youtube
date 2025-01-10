@@ -1,22 +1,27 @@
-name: Automação YouTube
+name: Build e Validação
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
   build:
     runs-on: ubuntu-24.04
+
     steps:
+      # 1. Checkout do Repositório
       - name: Checkout do repositório
         uses: actions/checkout@v3
 
+      # 2. Configurar Python
       - name: Configurar Python
         uses: actions/setup-python@v4
         with:
-          python-version: 3.9
+          python-version: '3.9'
 
+      # 3. Instalar Dependências
       - name: Instalar Dependências
         run: |
           python -m venv venv
@@ -24,24 +29,31 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
+      # 4. Configurar Git
       - name: Configurar Git
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
 
+      # 5. Criar Pasta de Credenciais
       - name: Criar Pasta de Credenciais
         run: mkdir -p credentials
 
+      # 6. Decodificar Client Secret
       - name: Decodificar Client Secret
-        run: echo "$CANAL1_CLIENT_SECRET" | base64 --decode > credentials/canal1_client_secret.json
+        run: |
+          echo "$CANAL1_CLIENT_SECRET" | base64 --decode > credentials/canal1_client_secret.json
         env:
           CANAL1_CLIENT_SECRET: ${{ secrets.CANAL1_CLIENT_SECRET }}
 
+      # 7. Decodificar Token
       - name: Decodificar Token
-        run: echo "$CANAL1_TOKEN" | base64 --decode > credentials/canal1_token.json
+        run: |
+          echo "$CANAL1_TOKEN" | base64 --decode > credentials/canal1_token.json
         env:
           CANAL1_TOKEN: ${{ secrets.CANAL1_TOKEN }}
 
+      # 8. Validar Arquivos de Credenciais
       - name: Validar Arquivos de Credenciais
         run: |
           # Instalar jq para validar JSON
@@ -51,7 +63,7 @@ jobs:
           # Verificar se client_secret.json está bem formado
           jq empty credentials/canal1_client_secret.json || { echo "Erro: client_secret.json está malformado."; exit 1; }
 
-          # Verificar campos essenciais
+          # Verificar campos essenciais no client_secret.json
           REQUIRED_FIELDS=("token_uri" "client_email")
           for field in "${REQUIRED_FIELDS[@]}"; do
             value=$(jq -r ."${field}" credentials/canal1_client_secret.json)
@@ -65,3 +77,14 @@ jobs:
           # Verificar se token.json está bem formado
           jq empty credentials/canal1_token.json || { echo "Erro: token.json está malformado."; exit 1; }
           echo "token.json validado com sucesso."
+
+      # 9. Adicionar Etapas Adicionais Conforme Necessário
+      # - name: Outra Etapa
+      #   run: echo "Etapas adicionais aqui"
+
+      # 10. Post Steps (Sempre Executadas)
+      - name: Post Checkout do repositório
+        if: always()
+        run: |
+          echo "Workflow concluído."
+

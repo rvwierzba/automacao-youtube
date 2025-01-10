@@ -1,113 +1,108 @@
-name: Automação YouTube
+name: Automação de Vídeos para YouTube
 
 on:
   push:
-    branches: [ main ]
-  workflow_dispatch:  # Habilita execução manual sem inputs para secrets
+    branches:
+      - main
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
-
-    env:
-      QUANTIDADE: 10  # Variável de ambiente fixa
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+    - name: Checkout do repositório
+      uses: actions/checkout@v3
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: 3.9
+    - name: Configurar Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
 
-      - name: Install Dependencies
-        run: |
-          python -m venv venv
-          source venv/bin/activate
-          pip install --upgrade pip
-          pip install --no-cache-dir -r requirements.txt
+    - name: Instalar Dependências
+      run: |
+        python -m venv venv
+        source venv/bin/activate
+        pip install --upgrade pip
+        pip install -r requirements.txt
 
-      - name: Configure Git
-        run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
+    - name: Configurar Git
+      run: |
+        git config --global user.name "GitHub Actions"
+        git config --global user.email "actions@github.com"
 
-      - name: Create Client Secret File
-        run: echo "${{ secrets.CLIENT_SECRET_FILE_FIZZQUIRK }}" | base64 --decode > client_secret.json
+    - name: Criar Pasta de Credenciais
+      run: mkdir -p credentials
 
-      - name: Create Token File
-        run: echo "${{ secrets.TOKEN_FILE_FIZZQUIRK }}" | base64 --decode > token.json
+    - name: Decodificar Client Secret
+      run: |
+        echo "$CANAL1_CLIENT_SECRET" | base64 --decode > credentials/canal1_client_secret.json
+      shell: bash
+      env:
+        CANAL1_CLIENT_SECRET: ${{ secrets.CANAL1_CLIENT_SECRET }}
 
-      - name: Mostrar Diretório Atual Antes da Geração do Vídeo
-        run: pwd
+    - name: Decodificar Token
+      run: |
+        echo "$CANAL1_TOKEN" | base64 --decode > credentials/canal1_token.json
+      shell: bash
+      env:
+        CANAL1_TOKEN: ${{ secrets.CANAL1_TOKEN }}
 
-      - name: Listar Arquivos Antes da Geração do Vídeo
-        run: ls -la
+    - name: Validar Arquivos de Credenciais
+      run: |
+        # Instalar jq para validar JSON
+        sudo apt-get update
+        sudo apt-get install -y jq
 
-      - name: Depuração das Variáveis de Ambiente
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
-          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
-        run: |
-          echo "GEMINI_API_KEY: $GEMINI_API_KEY"
-          echo "YOUTUBE_CHANNEL_ID: $YOUTUBE_CHANNEL_ID"
-          echo "PIXABAY_API_KEY: $PIXABAY_API_KEY"
+        # Verificar se client_secret.json está bem formado
+        jq empty credentials/canal1_client_secret.json || { echo "Erro: client_secret.json está malformado."; exit 1; }
 
-      - name: Generate Video
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
-          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
-          QUANTIDADE: ${{ env.QUANTIDADE }}
-        run: |
-          source venv/bin/activate
-          pwd
-          ls -la
-          echo "Iniciando a geração do vídeo com as seguintes variáveis:"
-          echo "GEMINI_API_KEY: $GEMINI_API_KEY"
-          echo "YOUTUBE_CHANNEL_ID: $YOUTUBE_CHANNEL_ID"
-          echo "PIXABAY_API_KEY: $PIXABAY_API_KEY"
-          echo "QUANTIDADE: $QUANTIDADE"
-          python scripts/main.py \
-            --gemini-api "$GEMINI_API_KEY" \
-            --youtube-channel "$YOUTUBE_CHANNEL_ID" \
-            --pixabay-api "$PIXABAY_API_KEY" \
-            --quantidade "$QUANTIDADE" | tee main_output.log
-
-          # Verificação imediata
-          if [ -f "video_final.mp4" ]; then
-            echo "Vídeo gerado com sucesso: video_final.mp4"
-          else
-            echo "Erro: O vídeo não foi gerado."
+        # Verificar campos essenciais
+        REQUIRED_FIELDS=("token_uri" "client_email")
+        for field in "${REQUIRED_FIELDS[@]}"; do
+          value=$(jq -r ."${field}" credentials/canal1_client_secret.json)
+          if [[ "$value" == "null" || -z "$value" ]]; then
+            echo "Erro: Campo '${field}' está ausente no client_secret.json."
             exit 1
           fi
+        done
 
-          pwd
+        echo "client_secret.json validado com sucesso."
+
+        # Verificar se token.json está bem formado
+        jq empty credentials/canal1_token.json || { echo "Erro: token.json está malformado."; exit 1; }
+
+        echo "token.json validado com sucesso."
+      shell: bash
+
+    - name: Gerar Vídeo e Fazer Upload para o YouTube
+      run: |
+        source venv/bin/activate
+        python scripts/main.py \
+          --gemini-api "$GEMINI_API_KEY" \
+          --youtube-channel "$YOUTUBE_CHANNEL_ID" \
+          --pixabay-api "$PIXABAY_API_KEY" \
+          --quantidade "$QUANTIDADE" | tee main_output.log
+      env:
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
+        PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+        QUANTIDADE: 10  # Ajuste conforme necessário
+
+    - name: Verificar Geração do Vídeo
+      run: |
+        if [ ! -f "video_final.mp4" ]; then
+          echo "Erro: O arquivo de vídeo 'video_final.mp4' não foi encontrado."
           ls -la
+          exit 1
+        else
+          echo "Arquivo 'video_final.mp4' encontrado com sucesso."
+        fi
+      shell: bash
 
-      - name: Listar Arquivos Após a Geração do Vídeo
-        run: ls -la
+    - name: Verificar Espaço em Disco
+      run: df -h
+      shell: bash
 
-      - name: Verify Video Generation
-        run: |
-          echo "Verificando a geração do vídeo..."
-          if [ ! -f "video_final.mp4" ]; then
-            echo "Erro: O arquivo de vídeo 'video_final.mp4' não foi encontrado."
-            echo "Listando arquivos para depuração:"
-            ls -la
-            exit 1
-          else
-            echo "Arquivo 'video_final.mp4' encontrado com sucesso."
-          fi
-
-      - name: Verificar Espaço em Disco
-        run: df -h
-
-      - name: Exibir Logs da Geração do Vídeo
-        if: failure()
-        run: cat main_output.log
-
-      - name: Complete job
-        run: echo "Workflow concluído."
+    - name: Completar Job
+      run: echo "Workflow concluído."
+      shell: bash

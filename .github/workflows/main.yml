@@ -78,7 +78,26 @@ jobs:
           jq empty credentials/token.json || { echo "Erro: token.json está malformado."; exit 1; }
           echo "token.json validado com sucesso."
 
-      # 9. Post Steps (Sempre Executadas)
+      # 9. Adicionar Etapas de Depuração (Opcional)
+      - name: Verificar Existência dos Arquivos Decodificados
+        run: |
+          if [ -f credentials/client_secret.json ]; then
+            echo "client_secret.json existe."
+            echo "Campos presentes: $(jq 'keys' credentials/client_secret.json)"
+          else
+            echo "Erro: client_secret.json não encontrado."
+            exit 1
+          fi
+
+          if [ -f credentials/token.json ]; then
+            echo "token.json existe."
+            echo "Campos presentes: $(jq 'keys' credentials/token.json)"
+          else
+            echo "Erro: token.json não encontrado."
+            exit 1
+          fi
+
+      # 10. Post Steps (Sempre Executadas)
       - name: Post Checkout do repositório
         if: always()
         run: |

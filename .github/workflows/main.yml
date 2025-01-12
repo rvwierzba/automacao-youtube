@@ -42,14 +42,14 @@ jobs:
       # 6. Decodificar Client Secret
       - name: Decodificar Client Secret
         run: |
-          echo "$CLIENT_SECRET_FILE_FIZZQUIRK" | base64 --decode > credentials/canal1_client_secret.json
+          echo "$CLIENT_SECRET_FILE_FIZZQUIRK" | base64 --decode > credentials/client_secret.json
         env:
           CLIENT_SECRET_FILE_FIZZQUIRK: ${{ secrets.CLIENT_SECRET_FILE_FIZZQUIRK }}
 
       # 7. Decodificar Token
       - name: Decodificar Token
         run: |
-          echo "$TOKEN_FILE_FIZZQUIRK" | base64 --decode > credentials/canal1_token.json
+          echo "$TOKEN_FILE_FIZZQUIRK" | base64 --decode > credentials/token.json
         env:
           TOKEN_FILE_FIZZQUIRK: ${{ secrets.TOKEN_FILE_FIZZQUIRK }}
 
@@ -61,12 +61,12 @@ jobs:
           sudo apt-get install -y jq
 
           # Verificar se client_secret.json está bem formado
-          jq empty credentials/canal1_client_secret.json || { echo "Erro: client_secret.json está malformado."; exit 1; }
+          jq empty credentials/client_secret.json || { echo "Erro: client_secret.json está malformado."; exit 1; }
 
           # Verificar campos essenciais no client_secret.json
           REQUIRED_FIELDS=("token_uri" "client_email")
           for field in "${REQUIRED_FIELDS[@]}"; do
-            value=$(jq -r ."${field}" credentials/canal1_client_secret.json)
+            value=$(jq -r ."${field}" credentials/client_secret.json)
             if [[ "$value" == "null" || -z "$value" ]]; then
               echo "Erro: Campo '${field}' está ausente no client_secret.json."
               exit 1
@@ -75,7 +75,7 @@ jobs:
           echo "client_secret.json validado com sucesso."
 
           # Verificar se token.json está bem formado
-          jq empty credentials/canal1_token.json || { echo "Erro: token.json está malformado."; exit 1; }
+          jq empty credentials/token.json || { echo "Erro: token.json está malformado."; exit 1; }
           echo "token.json validado com sucesso."
 
       # 9. Post Steps (Sempre Executadas)

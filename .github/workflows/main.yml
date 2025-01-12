@@ -42,16 +42,16 @@ jobs:
       # 6. Decodificar Client Secret
       - name: Decodificar Client Secret
         run: |
-          echo "$CANAL1_CLIENT_SECRET" | base64 --decode > credentials/canal1_client_secret.json
+          echo "$CLIENT_SECRET_FILE_FIZZQUIRK" | base64 --decode > credentials/canal1_client_secret.json
         env:
-          CANAL1_CLIENT_SECRET: ${{ secrets.CANAL1_CLIENT_SECRET }}
+          CLIENT_SECRET_FILE_FIZZQUIRK: ${{ secrets.CLIENT_SECRET_FILE_FIZZQUIRK }}
 
       # 7. Decodificar Token
       - name: Decodificar Token
         run: |
-          echo "$CANAL1_TOKEN" | base64 --decode > credentials/canal1_token.json
+          echo "$TOKEN_FILE_FIZZQUIRK" | base64 --decode > credentials/canal1_token.json
         env:
-          CANAL1_TOKEN: ${{ secrets.CANAL1_TOKEN }}
+          TOKEN_FILE_FIZZQUIRK: ${{ secrets.TOKEN_FILE_FIZZQUIRK }}
 
       # 8. Validar Arquivos de Credenciais
       - name: Validar Arquivos de Credenciais
@@ -78,11 +78,7 @@ jobs:
           jq empty credentials/canal1_token.json || { echo "Erro: token.json está malformado."; exit 1; }
           echo "token.json validado com sucesso."
 
-      # 9. Adicionar Etapas Adicionais Conforme Necessário
-      # - name: Outra Etapa
-      #   run: echo "Etapas adicionais aqui"
-
-      # 10. Post Steps (Sempre Executadas)
+      # 9. Post Steps (Sempre Executadas)
       - name: Post Checkout do repositório
         if: always()
         run: |

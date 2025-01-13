@@ -1,41 +1,66 @@
-# Google Generative AI Library
-google-generativeai
-# Google API Client Libraries
-google-api-python-client==2.156.0
-google-auth==2.37.0
-google-auth-oauthlib==1.2.1
-google-auth-httplib2==0.2.0
+import os
+import json
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
+import logging
 
-# Text-to-Speech
-gTTS==2.5.4
+def upload_to_youtube(client_secret_path, token_path, video_path, title, description):
+    # Carregar credenciais da conta de serviço
+    with open(client_secret_path, 'r') as f:
+        client_secret = json.load(f)
 
-# Video and Image Processing
-moviepy==1.0.3
-Pillow==10.4.0
+    credentials = service_account.Credentials.from_service_account_info(
+        client_secret, scopes=['https://www.googleapis.com/auth/youtube.upload']
+    )
 
-# Natural Language Processing
-nltk==3.9.1
+    youtube = build('youtube', 'v3', credentials=credentials)
 
-# Environment Variables
-python-dotenv==1.0.1
+    # Preparar o arquivo de vídeo para upload
+    media = MediaFileUpload(video_path, resumable=True)
 
-# HTTP Requests
-requests==2.32.3
+    # Criar a solicitação de upload
+    request = youtube.videos().insert(
+        part="snippet,status",
+        body={
+            "snippet": {
+                "title": title,
+                "description": description,
+                "tags": ["automação", "youtube", "vídeo"],
+                "categoryId": "22"  # Categoria: People & Blogs
+            },
+            "status": {
+                "privacyStatus": "public"  # ou "private" ou "unlisted"
+            }
+        },
+        media_body=media
+    )
 
-# Utilities
-cachetools==5.5.0
-click==8.1.8
-decorator==4.4.2
-joblib==1.4.2
-proglog==0.1.10
-proto-plus==1.25.0
-protobuf==4.25.5
-pyasn1==0.6.1
-pyasn1_modules==0.4.1
-pydantic==2.10.4
-pydantic_core==2.27.2
-pyparsing==3.2.1
-regex==2024.11.6
-tqdm==4.67.1
-uritemplate==4.1.1
-urllib3==2.3.0
+    response = None
+    while response is None:
+        status, response = request.next_chunk()
+        if status:
+            logging.info(f"Upload progress: {int(status.progress() * 100)}%")
+
+    logging.info(f"Upload concluído: {response['id']}")
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--gemini-api', required=True)
+    parser.add_argument('--youtube-channel', required=True)
+    parser.add_argument('--pixabay-api', required=True)
+    parser.add_argument('--quantidade', type=int, required=True)
+    args = parser.parse_args()
+
+    # Definir caminhos para credenciais
+    client_secret_path = 'credentials/canal1_client_secret.json'
+    token_path = 'credentials/canal1_token.json'
+    video_path = 'video_final.mp4'
+
+    # Configurar logging
+    logging.basicConfig(level=logging.INFO)
+
+    # Chamar função de upload
+    upload_to_youtube(client_secret_path, token_path, video_path, 'Título do Vídeo', 'Descrição do Vídeo')

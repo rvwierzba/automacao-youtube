@@ -78,13 +78,18 @@ jobs:
 
       # 11. Executar Script de Automação
       - name: Executar Script de Automação
+        env:
+          GEMINI_API: ${{ secrets.GEMINI_API }}
+          YOUTUBE_CHANNEL: ${{ secrets.YOUTUBE_CHANNEL }}
+          PIXABAY_API: ${{ secrets.PIXABAY_API }}
+          QUANTIDADE: ${{ secrets.QUANTIDADE }}
         run: |
           source venv/bin/activate
           python scripts/main.py \
-            --gemini-api "${{ secrets.GEMINI_API }}" \
-            --youtube-channel "${{ secrets.YOUTUBE_CHANNEL }}" \
-            --pixabay-api "${{ secrets.PIXABAY_API }}" \
-            --quantidade "${{ secrets.QUANTIDADE }}"
+            --gemini-api "${GEMINI_API}" \
+            --youtube-channel "${YOUTUBE_CHANNEL}" \
+            --pixabay-api "${PIXABAY_API}" \
+            --quantidade "${QUANTIDADE}"
 
       # 12. Post Checkout do Repositório
       - name: Post Checkout do Repositório

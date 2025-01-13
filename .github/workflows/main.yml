@@ -1,6 +1,5 @@
-name: build
+name: Automação de Vídeos no YouTube
 
-# Define os eventos que acionam o workflow
 on:
   push:
     branches: [ main ]
@@ -9,113 +8,102 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
-      # 1. Checkout do Repositório
-      - name: Checkout do repositório
-        uses: actions/checkout@v3
+    # 1. Checkout do repositório
+    - name: Checkout do Repositório
+      uses: actions/checkout@v3
 
-      # 2. Configuração do Python
-      - name: Configurar Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.9'          # Versão do Python a ser usada
-          check-latest: false
-          token: ${{ secrets.GITHUB_TOKEN }}
-          update-environment: true
-          allow-prereleases: false
+    # 2. Configurar Python
+    - name: Configurar Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'  # Versão do Python a ser usada
 
-      # 3. Instalação de Dependências
-      - name: Instalar Dependências
-        run: |
-          python -m venv venv
-          source venv/bin/activate
-          pip install --upgrade pip
-          pip install -r requirements.txt
+    # 3. Instalar Dependências
+    - name: Instalar Dependências
+      run: |
+        python -m venv venv
+        source venv/bin/activate
+        pip install --upgrade pip
+        pip install -r requirements.txt
 
-      # 4. Configuração do Git
-      - name: Configurar Git
-        run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
+    # 4. Configurar Git
+    - name: Configurar Git
+      run: |
+        git config --global user.name "GitHub Actions"
+        git config --global user.email "actions@github.com"
 
-      # 5. Criação da Pasta de Credenciais
-      - name: Criar Pasta de Credenciais
-        run: mkdir -p credentials
+    # 5. Criar Pasta de Credenciais
+    - name: Criar Pasta de Credenciais
+      run: mkdir -p credentials
 
-      # 6. Decodificação do Client Secret
-      - name: Decodificar Client Secret
-        run: echo "${{ secrets.CLIENT_SECRET_FILE_FIZZQUIRK }}" | base64 --decode > credentials/client_secret.json
+    # 6. Decodificar Client Secret com Remoção de BOM
+    - name: Decodificar Client Secret
+      run: |
+        echo "${{ secrets.CLIENT_SECRET_FILE_FIZZQUIRK }}" | base64 --decode | sed '1s/^\xEF\xBB\xBF//' > credentials/client_secret.json
+      env:
+        CLIENT_SECRET_FILE_FIZZQUIRK: ${{ secrets.CLIENT_SECRET_FILE_FIZZQUIRK }}
 
-      # 7. Decodificação do Token
-      - name: Decodificar Token
-        run: echo "${{ secrets.TOKEN_FILE_FIZZQUIRK }}" | base64 --decode > credentials/token.json
+    # 7. Decodificar Token com Remoção de BOM
+    - name: Decodificar Token
+      run: |
+        echo "${{ secrets.TOKEN_FILE_FIZZQUIRK }}" | base64 --decode | sed '1s/^\xEF\xBB\xBF//' > credentials/token.json
+      env:
+        TOKEN_FILE_FIZZQUIRK: ${{ secrets.TOKEN_FILE_FIZZQUIRK }}
 
-      # 8. Instalar jq para validar JSON
-      - name: Instalar jq para validar JSON
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y jq
+    # 8. Instalar jq para Validar JSON
+    - name: Instalar jq para Validar JSON
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y jq
 
-      # 9. Verificar Presença dos Campos Essenciais no client_secret.json
-      - name: Verificar Presença do Campo 'token_uri' no client_secret.json
-        run: |
-          if jq -e '.token_uri' credentials/client_secret.json > /dev/null; then
-            echo "'token_uri' está presente."
-          else
-            echo "Erro: Campo 'token_uri' está ausente no client_secret.json."
-            exit 1
-          fi
+    # 9. Validar Estrutura do client_secret.json
+    - name: Validar Estrutura do client_secret.json
+      run: jq empty credentials/client_secret.json
 
-      - name: Verificar Presença do Campo 'client_email' no client_secret.json
-        run: |
-          if jq -e '.client_email' credentials/client_secret.json > /dev/null; then
-            echo "'client_email' está presente."
-          else
-            echo "Erro: Campo 'client_email' está ausente no client_secret.json."
-            exit 1
-          fi
+    # 10. Validar Estrutura do token.json
+    - name: Validar Estrutura do token.json
+      run: jq empty credentials/token.json
 
-      # 10. Validação dos Arquivos de Credenciais
-      - name: Validar Arquivos de Credenciais
-        run: |
-          # Verificar se client_secret.json está bem formado
-          jq empty credentials/client_secret.json || { echo "Erro: client_secret.json está malformado."; exit 1; }
+    # 11. Verificar Presença do Campo 'token_uri' no client_secret.json
+    - name: Verificar Presença do Campo 'token_uri' no client_secret.json
+      run: |
+        if jq -e '.installed.token_uri' credentials/client_secret.json > /dev/null; then
+          echo "'token_uri' está presente."
+        else
+          echo "Erro: Campo 'token_uri' está ausente no client_secret.json."
+          exit 1
+        fi
 
-          # Verificar campos essenciais no client_secret.json (redundante após as etapas anteriores)
-          REQUIRED_FIELDS=("token_uri" "client_email")
-          for field in "${REQUIRED_FIELDS[@]}"; do
-            value=$(jq -r ."${field}" credentials/client_secret.json)
-            if [[ "$value" == "null" || -z "$value" ]]; then
-              echo "Erro: Campo '${field}' está ausente no client_secret.json."
-              exit 1
-            else
-              echo "Campo '${field}' presente."
-            fi
-          done
-          echo "client_secret.json validado com sucesso."
+    # 12. Verificar Presença do Campo 'client_email' no client_secret.json
+    - name: Verificar Presença do Campo 'client_email' no client_secret.json
+      run: |
+        if jq -e '.installed.client_email' credentials/client_secret.json > /dev/null; then
+          echo "'client_email' está presente."
+        else
+          echo "Erro: Campo 'client_email' está ausente no client_secret.json."
+          exit 1
+        fi
 
-          # Verificar se token.json está bem formado
-          jq empty credentials/token.json || { echo "Erro: token.json está malformado."; exit 1; }
-          echo "token.json validado com sucesso."
+    # 13. Outras Etapas do Workflow
+    # Adicione aqui outras etapas necessárias para a sua automação, por exemplo:
+    # - Nome: Executar Script de Automação
+    #   run: |
+    #     source venv/bin/activate
+    #     python seu_script.py
 
-      # 11. Verificação da Existência dos Arquivos Decodificados
-      - name: Verificar Existência dos Arquivos Decodificados
-        if: ${{ success() }}
-        run: |
-          if [[ ! -f credentials/client_secret.json ]]; then
-            echo "Erro: credentials/client_secret.json não existe."
-            exit 1
-          fi
-          if [[ ! -f credentials/token.json ]]; then
-            echo "Erro: credentials/token.json não existe."
-            exit 1
-          fi
-          echo "Arquivos decodificados existem."
+    # 14. Post Checkout do Repositório (Sempre Executado)
+    - name: Post Checkout do Repositório
+      if: always()
+      run: |
+        echo "Finalizando o checkout do repositório."
+      # Esta etapa pode incluir ações de limpeza ou outras finalizações necessárias
 
-      # 12. Post Checkout do Repositório
-      - name: Post Checkout do repositório
-        run: echo "Workflow concluído."
-
-      # Passos adicionais podem ser adicionados aqui conforme necessário
+    # 15. Post Configurar Python (Sempre Executado)
+    - name: Post Configurar Python
+      if: always()
+      run: |
+        echo "Finalizando a configuração do Python."
+      # Esta etapa pode incluir ações de limpeza ou outras finalizações necessárias

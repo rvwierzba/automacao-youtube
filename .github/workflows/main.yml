@@ -1,28 +1,25 @@
 name: Automação YouTube
 
-# Dispara o workflow em push e pull_request na branch main
 on:
+  schedule:
+    - cron: '0 0,12 * * *'  # Executa duas vezes ao dia (à meia-noite e ao meio-dia)
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout do Repositório
       - name: Checkout do Repositório
         uses: actions/checkout@v3
 
-      # 2. Configurar Python
       - name: Configurar Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.9'  # Especifique a versão do Python desejada
+          python-version: '3.9'
 
-      # 3. Instalar Dependências
       - name: Instalar Dependências
         run: |
           python -m venv venv
@@ -30,31 +27,26 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
-      # 4. Configurar Git
       - name: Configurar Git
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
 
-      # 5. Criar Pasta de Credenciais
       - name: Criar Pasta de Credenciais
         run: mkdir -p credentials
 
-      # 6. Decodificar Service Account JSON
       - name: Decodificar Service Account JSON
-        run: echo "${{ secrets.SERVICE_ACCOUNT_JSON }}" | base64 --decode | sed '1s/^\xEF\xBB\xBF//' > credentials/service_account.json
+        run: |
+          echo "${{ secrets.SERVICE_ACCOUNT_JSON }}" | base64 --decode | sed '1s/^\xEF\xBB\xBF//' > credentials/service_account.json
 
-      # 7. Instalar jq para Validar JSON
       - name: Instalar jq para Validar JSON
         run: |
           sudo apt-get update
           sudo apt-get install -y jq
 
-      # 8. Validar Estrutura do service_account.json
       - name: Validar Estrutura do service_account.json
         run: jq empty credentials/service_account.json
 
-      # 9. Verificar Presença do Campo 'token_uri' no service_account.json
       - name: Verificar Presença do Campo 'token_uri' no service_account.json
         run: |
           if jq -e '.token_uri' credentials/service_account.json > /dev/null; then
@@ -64,7 +56,6 @@ jobs:
             exit 1
           fi
 
-      # 10. Verificar Presença do Campo 'client_email' no service_account.json
       - name: Verificar Presença do Campo 'client_email' no service_account.json
         run: |
           if jq -e '.client_email' credentials/service_account.json > /dev/null; then
@@ -74,41 +65,28 @@ jobs:
             exit 1
           fi
 
-      # 11. Executar Script de Automação
       - name: Executar Script de Automação
-        env:
-          GEMINI_API: ${{ secrets.GEMINI_API }}
-          YOUTUBE_CHANNEL: ${{ secrets.YOUTUBE_CHANNEL }}
-          PIXABAY_API: ${{ secrets.PIXABAY_API }}
-          QUANTIDADE: ${{ secrets.QUANTIDADE }}
         run: |
           source venv/bin/activate
           # Verifica se todas as variáveis de ambiente estão definidas
-          if [ -z "$GEMINI_API" ] || [ -z "$YOUTUBE_CHANNEL" ] || [ -z "$PIXABAY_API" ] || [ -z "$QUANTIDADE" ]; then
+          if [ -z "$GEMINI_API_KEY" ] || [ -z "$YOUTUBE_CHANNEL_ID" ] || [ -z "$PIXABAY_API_KEY" ]; then
             echo "Erro: Uma ou mais variáveis de ambiente estão vazias."
             exit 1
           fi
-          # Verifica se QUANTIDADE é um inteiro
-          if ! [[ "$QUANTIDADE" =~ ^[0-9]+$ ]]; then
-            echo "Erro: A variável QUANTIDADE deve ser um número inteiro."
-            exit 1
-          fi
-          # Executa o script principal
+          # Executa o script principal com os parâmetros necessários
           python scripts/main.py \
-            --gemini-api "${GEMINI_API}" \
-            --youtube-channel "${YOUTUBE_CHANNEL}" \
-            --pixabay-api "${PIXABAY_API}" \
-            --quantidade "${QUANTIDADE}"
+            --gemini-api "${GEMINI_API_KEY}" \
+            --youtube-channel "${YOUTUBE_CHANNEL_ID}" \
+            --pixabay-api "${PIXABAY_API_KEY}" \
+            --quantidade 2  # Definindo uma quantidade fixa de 2 vídeos por execução
 
-      # 12. Etapas Pós-Execução (Sempre Executadas)
-      - name: Post Checkout do Repositório
-        if: always()
-        run: echo "Finalizando o checkout do repositório."
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+          # QUANTIDADE não está sendo passado como variável de ambiente
+          # Já que será definido diretamente no comando acima
 
-      - name: Post Configurar Python
-        if: always()
-        run: echo "Finalizando a configuração do Python."
-
+      # Etapas de pós-processamento, se houver
       - name: Finalizar Job
-        if: always()
         run: echo "Job concluído."

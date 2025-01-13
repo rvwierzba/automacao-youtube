@@ -1,23 +1,27 @@
-name: build
+name: Automação YouTube
 
 on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
+      # 1. Checkout do Repositório
       - name: Checkout do Repositório
         uses: actions/checkout@v3
 
+      # 2. Configurar Python
       - name: Configurar Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
 
+      # 3. Instalar Dependências
       - name: Instalar Dependências
         run: |
           python -m venv venv
@@ -25,25 +29,34 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
+      # 4. Configurar Git
       - name: Configurar Git
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
 
+      # 5. Criar Pasta de Credenciais
       - name: Criar Pasta de Credenciais
         run: mkdir -p credentials
 
+      # 6. Decodificar Service Account JSON
       - name: Decodificar Service Account JSON
-        run: echo "${{ secrets.SERVICE_ACCOUNT_JSON }}" | base64 --decode | sed '1s/^\xEF\xBB\xBF//' > credentials/service_account.json
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+        run: |
+          echo "${SERVICE_ACCOUNT_JSON}" | base64 --decode | sed '1s/^\xEF\xBB\xBF//' > credentials/service_account.json
 
+      # 7. Instalar jq para Validar JSON
       - name: Instalar jq para Validar JSON
         run: |
           sudo apt-get update
           sudo apt-get install -y jq
 
+      # 8. Validar Estrutura do service_account.json
       - name: Validar Estrutura do service_account.json
         run: jq empty credentials/service_account.json
 
+      # 9. Verificar Presença do Campo 'token_uri' no service_account.json
       - name: Verificar Presença do Campo 'token_uri' no service_account.json
         run: |
           if jq -e '.token_uri' credentials/service_account.json > /dev/null; then
@@ -53,6 +66,7 @@ jobs:
             exit 1
           fi
 
+      # 10. Verificar Presença do Campo 'client_email' no service_account.json
       - name: Verificar Presença do Campo 'client_email' no service_account.json
         run: |
           if jq -e '.client_email' credentials/service_account.json > /dev/null; then
@@ -62,17 +76,22 @@ jobs:
             exit 1
           fi
 
+      # 11. Executar Script de Automação
       - name: Executar Script de Automação
         run: |
           source venv/bin/activate
-          python scripts/main.py  # Substituído para o script correto
+          python scripts/main.py \
+            --gemini-api "${{ secrets.GEMINI_API }}" \
+            --youtube-channel "${{ secrets.YOUTUBE_CHANNEL }}" \
+            --pixabay-api "${{ secrets.PIXABAY_API }}" \
+            --quantidade "${{ secrets.QUANTIDADE }}"
 
-      # Passos de pós-processamento, se houver
+      # 12. Post Checkout do Repositório
       - name: Post Checkout do Repositório
         if: always()
         run: echo "Finalizando o checkout do repositório."
 
+      # 13. Post Configurar Python
       - name: Post Configurar Python
         if: always()
         run: echo "Finalizando a configuração do Python."
-

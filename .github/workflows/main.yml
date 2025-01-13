@@ -1,98 +1,78 @@
-name: Automação de Vídeos no YouTube
+name: build
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
 
     steps:
-    # 1. Checkout do Repositório
-    - name: Checkout do Repositório
-      uses: actions/checkout@v3
+      - name: Checkout do Repositório
+        uses: actions/checkout@v3
 
-    # 2. Configurar Python
-    - name: Configurar Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'  # Versão do Python a ser usada
+      - name: Configurar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
 
-    # 3. Instalar Dependências
-    - name: Instalar Dependências
-      run: |
-        python -m venv venv
-        source venv/bin/activate
-        pip install --upgrade pip
-        pip install -r requirements.txt
+      - name: Instalar Dependências
+        run: |
+          python -m venv venv
+          source venv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements.txt
 
-    # 4. Configurar Git
-    - name: Configurar Git
-      run: |
-        git config --global user.name "GitHub Actions"
-        git config --global user.email "actions@github.com"
+      - name: Configurar Git
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
 
-    # 5. Criar Pasta de Credenciais
-    - name: Criar Pasta de Credenciais
-      run: mkdir -p credentials
+      - name: Criar Pasta de Credenciais
+        run: mkdir -p credentials
 
-    # 6. Decodificar Service Account JSON
-    - name: Decodificar Service Account JSON
-      run: |
-        echo "${{ secrets.SERVICE_ACCOUNT_JSON }}" | base64 --decode | sed '1s/^\xEF\xBB\xBF//' > credentials/service_account.json
-      env:
-        SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+      - name: Decodificar Service Account JSON
+        run: echo "${{ secrets.SERVICE_ACCOUNT_JSON }}" | base64 --decode | sed '1s/^\xEF\xBB\xBF//' > credentials/service_account.json
 
-    # 7. Instalar jq para Validar JSON
-    - name: Instalar jq para Validar JSON
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y jq
+      - name: Instalar jq para Validar JSON
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
 
-    # 8. Validar Estrutura do service_account.json
-    - name: Validar Estrutura do service_account.json
-      run: jq empty credentials/service_account.json
+      - name: Validar Estrutura do service_account.json
+        run: jq empty credentials/service_account.json
 
-    # 9. Verificar Presença do Campo 'token_uri' no service_account.json
-    - name: Verificar Presença do Campo 'token_uri' no service_account.json
-      run: |
-        if jq -e '.token_uri' credentials/service_account.json > /dev/null; then
-          echo "'token_uri' está presente."
-        else
-          echo "Erro: Campo 'token_uri' está ausente no service_account.json."
-          exit 1
-        fi
+      - name: Verificar Presença do Campo 'token_uri' no service_account.json
+        run: |
+          if jq -e '.token_uri' credentials/service_account.json > /dev/null; then
+            echo "'token_uri' está presente."
+          else
+            echo "Erro: Campo 'token_uri' está ausente no service_account.json."
+            exit 1
+          fi
 
-    # 10. Verificar Presença do Campo 'client_email' no service_account.json
-    - name: Verificar Presença do Campo 'client_email' no service_account.json
-      run: |
-        if jq -e '.client_email' credentials/service_account.json > /dev/null; then
-          echo "'client_email' está presente."
-        else
-          echo "Erro: Campo 'client_email' está ausente no service_account.json."
-          exit 1
-        fi
+      - name: Verificar Presença do Campo 'client_email' no service_account.json
+        run: |
+          if jq -e '.client_email' credentials/service_account.json > /dev/null; then
+            echo "'client_email' está presente."
+          else
+            echo "Erro: Campo 'client_email' está ausente no service_account.json."
+            exit 1
+          fi
 
-    # 11. Outras Etapas do Workflow
-    # Adicione aqui outras etapas necessárias para a sua automação, por exemplo:
-    - name: Executar Script de Automação
-      run: |
-        source venv/bin/activate
-        python seu_script.py  # Substitua por seu script real
+      - name: Executar Script de Automação
+        run: |
+          source venv/bin/activate
+          python scripts/main.py  # Substituído para o script correto
 
-    # 12. Post Checkout do Repositório (Sempre Executado)
-    - name: Post Checkout do Repositório
-      if: always()
-      run: |
-        echo "Finalizando o checkout do repositório."
-      # Esta etapa pode incluir ações de limpeza ou outras finalizações necessárias
+      # Passos de pós-processamento, se houver
+      - name: Post Checkout do Repositório
+        if: always()
+        run: echo "Finalizando o checkout do repositório."
 
-    # 13. Post Configurar Python (Sempre Executado)
-    - name: Post Configurar Python
-      if: always()
-      run: |
-        echo "Finalizando a configuração do Python."
-      # Esta etapa pode incluir ações de limpeza ou outras finalizações necessárias
+      - name: Post Configurar Python
+        if: always()
+        run: echo "Finalizando a configuração do Python."
+

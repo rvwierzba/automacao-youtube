@@ -52,17 +52,38 @@ jobs:
       - name: Decodificar Token
         run: echo "${{ secrets.TOKEN_FILE_FIZZQUIRK }}" | base64 --decode > credentials/token.json
 
-      # 8. Validação dos Arquivos de Credenciais
-      - name: Validar Arquivos de Credenciais
+      # 8. Instalar jq para validar JSON
+      - name: Instalar jq para validar JSON
         run: |
-          # Instalar jq para validar JSON
           sudo apt-get update
           sudo apt-get install -y jq
 
+      # 9. Verificar Presença dos Campos Essenciais no client_secret.json
+      - name: Verificar Presença do Campo 'token_uri' no client_secret.json
+        run: |
+          if jq -e '.token_uri' credentials/client_secret.json > /dev/null; then
+            echo "'token_uri' está presente."
+          else
+            echo "Erro: Campo 'token_uri' está ausente no client_secret.json."
+            exit 1
+          fi
+
+      - name: Verificar Presença do Campo 'client_email' no client_secret.json
+        run: |
+          if jq -e '.client_email' credentials/client_secret.json > /dev/null; then
+            echo "'client_email' está presente."
+          else
+            echo "Erro: Campo 'client_email' está ausente no client_secret.json."
+            exit 1
+          fi
+
+      # 10. Validação dos Arquivos de Credenciais
+      - name: Validar Arquivos de Credenciais
+        run: |
           # Verificar se client_secret.json está bem formado
           jq empty credentials/client_secret.json || { echo "Erro: client_secret.json está malformado."; exit 1; }
 
-          # Verificar campos essenciais no client_secret.json
+          # Verificar campos essenciais no client_secret.json (redundante após as etapas anteriores)
           REQUIRED_FIELDS=("token_uri" "client_email")
           for field in "${REQUIRED_FIELDS[@]}"; do
             value=$(jq -r ."${field}" credentials/client_secret.json)
@@ -79,7 +100,7 @@ jobs:
           jq empty credentials/token.json || { echo "Erro: token.json está malformado."; exit 1; }
           echo "token.json validado com sucesso."
 
-      # 9. Verificação da Existência dos Arquivos Decodificados
+      # 11. Verificação da Existência dos Arquivos Decodificados
       - name: Verificar Existência dos Arquivos Decodificados
         if: ${{ success() }}
         run: |
@@ -93,10 +114,8 @@ jobs:
           fi
           echo "Arquivos decodificados existem."
 
-      # 10. Post Checkout do Repositório
+      # 12. Post Checkout do Repositório
       - name: Post Checkout do repositório
         run: echo "Workflow concluído."
 
       # Passos adicionais podem ser adicionados aqui conforme necessário
-
-    # Fim do job 'build'

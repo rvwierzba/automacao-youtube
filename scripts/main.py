@@ -1,11 +1,15 @@
+# scripts/main.py
+
 import os
 import json
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 import logging
+import argparse
+import requests
 
-def upload_to_youtube(client_secret_path, token_path, video_path, title, description):
+def upload_to_youtube(client_secret_path, video_path, title, description):
     # Carregar credenciais da conta de serviço
     with open(client_secret_path, 'r') as f:
         client_secret = json.load(f)
@@ -44,23 +48,44 @@ def upload_to_youtube(client_secret_path, token_path, video_path, title, descrip
 
     logging.info(f"Upload concluído: {response['id']}")
 
-if __name__ == "__main__":
-    import argparse
+def buscar_imagens_pixabay(api_key, quantidade):
+    url = "https://pixabay.com/api/"
+    params = {
+        'key': api_key,
+        'per_page': quantidade,
+        'safesearch': 'true'
+    }
+    response = requests.get(url, params=params)
+    if response.status_code == 200:
+        dados = response.json()
+        # Processar as imagens conforme necessário
+        logging.info(f"Imagens obtidas: {len(dados.get('hits', []))}")
+    else:
+        logging.error(f"Falha ao buscar imagens: {response.status_code}")
+        response.raise_for_status()
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--gemini-api', required=True)
-    parser.add_argument('--youtube-channel', required=True)
-    parser.add_argument('--pixabay-api', required=True)
-    parser.add_argument('--quantidade', type=int, required=True)
+def main():
+    parser = argparse.ArgumentParser(description='Script de Automação para YouTube')
+    parser.add_argument('--gemini-api', required=True, help='Chave da API Gemini')
+    parser.add_argument('--youtube-channel', required=True, help='Canal do YouTube')
+    parser.add_argument('--pixabay-api', required=True, help='Chave da API Pixabay')
+    parser.add_argument('--quantidade', type=int, required=True, help='Quantidade de itens a processar')
     args = parser.parse_args()
 
-    # Definir caminhos para credenciais
-    client_secret_path = 'credentials/canal1_client_secret.json'
-    token_path = 'credentials/canal1_token.json'
+    # Definir caminhos para credenciais e vídeo
+    client_secret_path = 'credentials/service_account.json'
     video_path = 'video_final.mp4'
 
     # Configurar logging
     logging.basicConfig(level=logging.INFO)
 
-    # Chamar função de upload
-    upload_to_youtube(client_secret_path, token_path, video_path, 'Título do Vídeo', 'Descrição do Vídeo')
+    # Chamar funções de automação
+    try:
+        buscar_imagens_pixabay(args.pixabay_api, args.quantidade)
+        upload_to_youtube(client_secret_path, video_path, 'Título do Vídeo', 'Descrição do Vídeo')
+    except Exception as e:
+        logging.error(f"Erro durante a execução: {e}")
+        exit(1)
+
+if __name__ == "__main__":
+    main()

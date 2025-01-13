@@ -1,10 +1,11 @@
 name: Automação YouTube
 
+# Dispara o workflow em push e pull_request na branch main
 on:
   push:
-    branches:
-      - main
-  workflow_dispatch:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
   build:
@@ -19,7 +20,7 @@ jobs:
       - name: Configurar Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.9'
+          python-version: '3.9'  # Especifique a versão do Python desejada
 
       # 3. Instalar Dependências
       - name: Instalar Dependências
@@ -41,10 +42,7 @@ jobs:
 
       # 6. Decodificar Service Account JSON
       - name: Decodificar Service Account JSON
-        env:
-          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
-        run: |
-          echo "${SERVICE_ACCOUNT_JSON}" | base64 --decode | sed '1s/^\xEF\xBB\xBF//' > credentials/service_account.json
+        run: echo "${{ secrets.SERVICE_ACCOUNT_JSON }}" | base64 --decode | sed '1s/^\xEF\xBB\xBF//' > credentials/service_account.json
 
       # 7. Instalar jq para Validar JSON
       - name: Instalar jq para Validar JSON
@@ -85,18 +83,32 @@ jobs:
           QUANTIDADE: ${{ secrets.QUANTIDADE }}
         run: |
           source venv/bin/activate
+          # Verifica se todas as variáveis de ambiente estão definidas
+          if [ -z "$GEMINI_API" ] || [ -z "$YOUTUBE_CHANNEL" ] || [ -z "$PIXABAY_API" ] || [ -z "$QUANTIDADE" ]; then
+            echo "Erro: Uma ou mais variáveis de ambiente estão vazias."
+            exit 1
+          fi
+          # Verifica se QUANTIDADE é um inteiro
+          if ! [[ "$QUANTIDADE" =~ ^[0-9]+$ ]]; then
+            echo "Erro: A variável QUANTIDADE deve ser um número inteiro."
+            exit 1
+          fi
+          # Executa o script principal
           python scripts/main.py \
             --gemini-api "${GEMINI_API}" \
             --youtube-channel "${YOUTUBE_CHANNEL}" \
             --pixabay-api "${PIXABAY_API}" \
             --quantidade "${QUANTIDADE}"
 
-      # 12. Post Checkout do Repositório
+      # 12. Etapas Pós-Execução (Sempre Executadas)
       - name: Post Checkout do Repositório
         if: always()
         run: echo "Finalizando o checkout do repositório."
 
-      # 13. Post Configurar Python
       - name: Post Configurar Python
         if: always()
         run: echo "Finalizando a configuração do Python."
+
+      - name: Finalizar Job
+        if: always()
+        run: echo "Job concluído."

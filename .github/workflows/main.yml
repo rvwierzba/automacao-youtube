@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
-    # 1. Checkout do repositório
+    # 1. Checkout do Repositório
     - name: Checkout do Repositório
       uses: actions/checkout@v3
 
@@ -39,69 +39,58 @@ jobs:
     - name: Criar Pasta de Credenciais
       run: mkdir -p credentials
 
-    # 6. Decodificar Client Secret com Remoção de BOM
-    - name: Decodificar Client Secret
+    # 6. Decodificar Service Account JSON
+    - name: Decodificar Service Account JSON
       run: |
-        echo "${{ secrets.CLIENT_SECRET_FILE_FIZZQUIRK }}" | base64 --decode | sed '1s/^\xEF\xBB\xBF//' > credentials/client_secret.json
+        echo "${{ secrets.SERVICE_ACCOUNT_JSON }}" | base64 --decode | sed '1s/^\xEF\xBB\xBF//' > credentials/service_account.json
       env:
-        CLIENT_SECRET_FILE_FIZZQUIRK: ${{ secrets.CLIENT_SECRET_FILE_FIZZQUIRK }}
+        SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
 
-    # 7. Decodificar Token com Remoção de BOM
-    - name: Decodificar Token
-      run: |
-        echo "${{ secrets.TOKEN_FILE_FIZZQUIRK }}" | base64 --decode | sed '1s/^\xEF\xBB\xBF//' > credentials/token.json
-      env:
-        TOKEN_FILE_FIZZQUIRK: ${{ secrets.TOKEN_FILE_FIZZQUIRK }}
-
-    # 8. Instalar jq para Validar JSON
+    # 7. Instalar jq para Validar JSON
     - name: Instalar jq para Validar JSON
       run: |
         sudo apt-get update
         sudo apt-get install -y jq
 
-    # 9. Validar Estrutura do client_secret.json
-    - name: Validar Estrutura do client_secret.json
-      run: jq empty credentials/client_secret.json
+    # 8. Validar Estrutura do service_account.json
+    - name: Validar Estrutura do service_account.json
+      run: jq empty credentials/service_account.json
 
-    # 10. Validar Estrutura do token.json
-    - name: Validar Estrutura do token.json
-      run: jq empty credentials/token.json
-
-    # 11. Verificar Presença do Campo 'token_uri' no client_secret.json
-    - name: Verificar Presença do Campo 'token_uri' no client_secret.json
+    # 9. Verificar Presença do Campo 'token_uri' no service_account.json
+    - name: Verificar Presença do Campo 'token_uri' no service_account.json
       run: |
-        if jq -e '.installed.token_uri' credentials/client_secret.json > /dev/null; then
+        if jq -e '.token_uri' credentials/service_account.json > /dev/null; then
           echo "'token_uri' está presente."
         else
-          echo "Erro: Campo 'token_uri' está ausente no client_secret.json."
+          echo "Erro: Campo 'token_uri' está ausente no service_account.json."
           exit 1
         fi
 
-    # 12. Verificar Presença do Campo 'client_email' no client_secret.json
-    - name: Verificar Presença do Campo 'client_email' no client_secret.json
+    # 10. Verificar Presença do Campo 'client_email' no service_account.json
+    - name: Verificar Presença do Campo 'client_email' no service_account.json
       run: |
-        if jq -e '.installed.client_email' credentials/client_secret.json > /dev/null; then
+        if jq -e '.client_email' credentials/service_account.json > /dev/null; then
           echo "'client_email' está presente."
         else
-          echo "Erro: Campo 'client_email' está ausente no client_secret.json."
+          echo "Erro: Campo 'client_email' está ausente no service_account.json."
           exit 1
         fi
 
-    # 13. Outras Etapas do Workflow
+    # 11. Outras Etapas do Workflow
     # Adicione aqui outras etapas necessárias para a sua automação, por exemplo:
-    # - Nome: Executar Script de Automação
-    #   run: |
-    #     source venv/bin/activate
-    #     python seu_script.py
+    - name: Executar Script de Automação
+      run: |
+        source venv/bin/activate
+        python seu_script.py  # Substitua por seu script real
 
-    # 14. Post Checkout do Repositório (Sempre Executado)
+    # 12. Post Checkout do Repositório (Sempre Executado)
     - name: Post Checkout do Repositório
       if: always()
       run: |
         echo "Finalizando o checkout do repositório."
       # Esta etapa pode incluir ações de limpeza ou outras finalizações necessárias
 
-    # 15. Post Configurar Python (Sempre Executado)
+    # 13. Post Configurar Python (Sempre Executado)
     - name: Post Configurar Python
       if: always()
       run: |

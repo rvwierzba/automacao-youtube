@@ -68,6 +68,10 @@ jobs:
         fi
 
     - name: Executar Script de Automação
+      env:
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
+        PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
       run: |
         source venv/bin/activate
         # Verifica se todas as variáveis de ambiente estão definidas

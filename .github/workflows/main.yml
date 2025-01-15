@@ -2,9 +2,7 @@ name: Automação YouTube
 
 on:
   push:
-    branches:
-      - main
-  workflow_dispatch:
+    branches: [ main ]
 
 jobs:
   build:
@@ -18,10 +16,6 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
-          check-latest: false
-          token: ${{ secrets.GITHUB_TOKEN }}
-          update-environment: true
-          allow-prereleases: false
 
       - name: Instalar Dependências
         run: |
@@ -39,9 +33,7 @@ jobs:
         run: mkdir -p credentials
 
       - name: Decodificar Service Account JSON
-        run: |
-          echo "${{ secrets.SERVICE_ACCOUNT_JSON }}" | base64 --decode | sed '1s/^\xEF\xBB\xBF//' > credentials/client_secrets.json
-        shell: bash
+        run: echo "${{ secrets.SERVICE_ACCOUNT_JSON }}" | base64 --decode | sed '1s/^\xEF\xBB\xBF//' > credentials/client_secrets.json
 
       - name: Instalar jq para Validar JSON
         run: |
@@ -70,6 +62,10 @@ jobs:
           fi
 
       - name: Executar Script de Automação
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
         run: |
           source venv/bin/activate
           # Verifica se todas as variáveis de ambiente estão definidas
@@ -85,5 +81,4 @@ jobs:
             --quantidade 3  # Atualizado para 3 para atender aos requisitos da API
 
       - name: Finalizar Job
-        if: always()
         run: echo "Job finalizado."

@@ -4,89 +4,86 @@ on:
   push:
     branches:
       - main
-  schedule:
-    - cron: '0 0 * * *'  # Executa diariamente à meia-noite
-  workflow_dispatch:        # Permite execução manual
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout do Repositório
-      uses: actions/checkout@v3
+      - name: Checkout do Repositório
+        uses: actions/checkout@v3
 
-    - name: Configurar Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
+      - name: Configurar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          check-latest: false
+          token: ${{ secrets.GITHUB_TOKEN }}
+          update-environment: true
+          allow-prereleases: false
 
-    - name: Instalar Dependências
-      run: |
-        python -m venv venv
-        source venv/bin/activate
-        pip install --upgrade pip
-        pip install -r requirements.txt
+      - name: Instalar Dependências
+        run: |
+          python -m venv venv
+          source venv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements.txt
 
-    - name: Configurar Git
-      run: |
-        git config --global user.name "GitHub Actions"
-        git config --global user.email "actions@github.com"
+      - name: Configurar Git
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
 
-    - name: Criar Pasta de Credenciais
-      run: |
-        mkdir -p credentials
+      - name: Criar Pasta de Credenciais
+        run: mkdir -p credentials
 
-    - name: Decodificar Service Account JSON
-      run: |
-        echo "${{ secrets.SERVICE_ACCOUNT_JSON }}" | base64 --decode | sed '1s/^\xEF\xBB\xBF//' > credentials/service_account.json
+      - name: Decodificar Service Account JSON
+        run: |
+          echo "${{ secrets.SERVICE_ACCOUNT_JSON }}" | base64 --decode | sed '1s/^\xEF\xBB\xBF//' > credentials/client_secrets.json
+        shell: bash
 
-    - name: Instalar jq para Validar JSON
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y jq
+      - name: Instalar jq para Validar JSON
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
 
-    - name: Validar Estrutura do service_account.json
-      run: |
-        jq empty credentials/service_account.json
+      - name: Validar Estrutura do service_account.json
+        run: jq empty credentials/client_secrets.json
 
-    - name: Verificar Presença do Campo 'token_uri' no service_account.json
-      run: |
-        if jq -e '.token_uri' credentials/service_account.json > /dev/null; then
-          echo "'token_uri' está presente."
-        else
-          echo "Erro: Campo 'token_uri' está ausente no service_account.json."
-          exit 1
-        fi
+      - name: Verificar Presença do Campo 'token_uri' no service_account.json
+        run: |
+          if jq -e '.token_uri' credentials/client_secrets.json > /dev/null; then
+            echo "'token_uri' está presente."
+          else
+            echo "Erro: Campo 'token_uri' está ausente no service_account.json."
+            exit 1
+          fi
 
-    - name: Verificar Presença do Campo 'client_email' no service_account.json
-      run: |
-        if jq -e '.client_email' credentials/service_account.json > /dev/null; then
-          echo "'client_email' está presente."
-        else
-          echo "Erro: Campo 'client_email' está ausente no service_account.json."
-          exit 1
-        fi
+      - name: Verificar Presença do Campo 'client_email' no service_account.json
+        run: |
+          if jq -e '.client_email' credentials/client_secrets.json > /dev/null; then
+            echo "'client_email' está presente."
+          else
+            echo "Erro: Campo 'client_email' está ausente no service_account.json."
+            exit 1
+          fi
 
-    - name: Executar Script de Automação
-      env:
-        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
-        PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
-      run: |
-        source venv/bin/activate
-        # Verifica se todas as variáveis de ambiente estão definidas
-        if [ -z "$GEMINI_API_KEY" ] || [ -z "$YOUTUBE_CHANNEL_ID" ] || [ -z "$PIXABAY_API_KEY" ]; then
-          echo "Erro: Uma ou mais variáveis de ambiente estão vazias."
-          exit 1
-        fi
-        # Executa o script principal com os parâmetros necessários
-        python scripts/main.py \
-          --gemini-api "${GEMINI_API_KEY}" \
-          --youtube-channel "${YOUTUBE_CHANNEL_ID}" \
-          --pixabay-api "${PIXABAY_API_KEY}" \
-          --quantidade 3  # Atualizado para 3 para atender aos requisitos da API
+      - name: Executar Script de Automação
+        run: |
+          source venv/bin/activate
+          # Verifica se todas as variáveis de ambiente estão definidas
+          if [ -z "$GEMINI_API_KEY" ] || [ -z "$YOUTUBE_CHANNEL_ID" ] || [ -z "$PIXABAY_API_KEY" ]; then
+            echo "Erro: Uma ou mais variáveis de ambiente estão vazias."
+            exit 1
+          fi
+          # Executa o script principal com os parâmetros necessários
+          python scripts/main.py \
+            --gemini-api "${GEMINI_API_KEY}" \
+            --youtube-channel "${YOUTUBE_CHANNEL_ID}" \
+            --pixabay-api "${PIXABAY_API_KEY}" \
+            --quantidade 3  # Atualizado para 3 para atender aos requisitos da API
 
-    - name: Finalizar Job
-      if: always()
-      run: echo "Job finalizado."
+      - name: Finalizar Job
+        if: always()
+        run: echo "Job finalizado."

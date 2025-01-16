@@ -4,6 +4,8 @@ import logging
 import os
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+import google.auth  # Importação adicionada
+from moviepy.editor import VideoFileClip, AudioFileClip
 
 logger = logging.getLogger(__name__)
 
@@ -14,17 +16,20 @@ def load_json_from_base64(file_path):
     return json.loads(json_content)
 
 def validate_client_secret(client_secret):
+    # Verifique se a estrutura do client_secret está correta
     required_fields = ['client_email', 'client_id', 'token_uri']
-    for field in required_fields:
-        if field not in client_secret['installed']:
-            logger.error(f"Erro: Campo '{field}' está ausente no client_secret.")
-            raise ValueError(f"Campo '{field}' está ausente no client_secret.")
+    if 'installed' in client_secret:
+        for field in required_fields:
+            if field not in client_secret['installed']:
+                logger.error(f"Erro: Campo '{field}' está ausente no client_secret.")
+                raise ValueError(f"Campo '{field}' está ausente no client_secret.")
+    else:
+        logger.error("Erro: Estrutura de client_secret inválida.")
+        raise ValueError("Estrutura de client_secret inválida.")
 
 def create_video_with_audio(video_title, audio_file, output_file):
-    from moviepy.editor import VideoFileClip, AudioFileClip
-    
     # Criar um vídeo simples com uma imagem ou fundo
-    clip = VideoFileClip("path/to/your/image.mp4")  # Substitua pela sua imagem ou vídeo
+    clip = VideoFileClip("path/to/your/image.mp4")  # Substitua pelo caminho correto da sua imagem/vídeo
     audio = AudioFileClip(audio_file)
     
     # Adiciona o áudio ao vídeo
@@ -44,7 +49,7 @@ def upload_video_to_youtube(video_file, title, description, tags, subtitles_file
     client_secret = load_json_from_base64(client_secret_path)
     
     # Autenticação na API do YouTube
-    credentials = google.auth.default(scopes=scopes)[0]
+    credentials, _ = google.auth.default(scopes=scopes)
     youtube = build('youtube', 'v3', credentials=credentials)
 
     body = {
@@ -63,12 +68,16 @@ def upload_video_to_youtube(video_file, title, description, tags, subtitles_file
     request = youtube.videos().insert(part='snippet,status', body=body, media_body=media)
     response = request.execute()
 
-    # Adiciona legendas
-    with open(subtitles_file, 'r') as f:
-        subtitles = f.read()
-
-    # Código para adicionar legendas (substitua com a implementação correta)
-    # youtube.captions().insert(part='snippet', body=caption_body, videoId=response['id']).execute()
+    # Adiciona legendas (implementação a ser feita)
+    # caption_body = {
+    #     'snippet': {
+    #         'videoId': response['id'],
+    #         'language': 'en',
+    #         'name': 'Legendas em Inglês',
+    #         'isDraft': False
+    #     }
+    # }
+    # youtube.captions().insert(part='snippet', body=caption_body, media_body=subtitles_file).execute()
 
 def main(client_secret_path, token_path, video_title, audio_file):
     # Carregar as credenciais

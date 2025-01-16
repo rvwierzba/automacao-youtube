@@ -1,11 +1,10 @@
 import json
 import base64
 import logging
-import os
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
-import google.auth  # Importação adicionada
 from moviepy.editor import VideoFileClip, AudioFileClip
+import google.auth  # Importação necessária
 
 logger = logging.getLogger(__name__)
 
@@ -16,8 +15,7 @@ def load_json_from_base64(file_path):
     return json.loads(json_content)
 
 def validate_client_secret(client_secret):
-    # Verifique se a estrutura do client_secret está correta
-    required_fields = ['client_email', 'client_id', 'token_uri']
+    required_fields = ['client_email', 'client_id']
     if 'installed' in client_secret:
         for field in required_fields:
             if field not in client_secret['installed']:

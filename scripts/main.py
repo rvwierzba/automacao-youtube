@@ -2,7 +2,6 @@ import json
 import base64
 import logging
 import os
-import google.auth
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
@@ -15,12 +14,13 @@ def load_json_from_base64(file_path):
     return json.loads(json_content)
 
 def validate_client_secret(client_secret):
-    if 'installed' not in client_secret or 'token_uri' not in client_secret['installed']:
-        logger.error("Erro: Campo 'token_uri' está ausente no client_secret.")
-        raise ValueError("Campo 'token_uri' está ausente no client_secret.")
+    required_fields = ['client_email', 'client_id', 'token_uri']
+    for field in required_fields:
+        if field not in client_secret['installed']:
+            logger.error(f"Erro: Campo '{field}' está ausente no client_secret.")
+            raise ValueError(f"Campo '{field}' está ausente no client_secret.")
 
 def create_video_with_audio(video_title, audio_file, output_file):
-    # Aqui você pode usar uma biblioteca como moviepy para gerar o vídeo
     from moviepy.editor import VideoFileClip, AudioFileClip
     
     # Criar um vídeo simples com uma imagem ou fundo
@@ -30,20 +30,23 @@ def create_video_with_audio(video_title, audio_file, output_file):
     # Adiciona o áudio ao vídeo
     final_clip = clip.set_audio(audio)
     final_clip.write_videofile(output_file, codec='libx264')
-    
+
 def create_subtitles(video_title, subtitles_file):
     # Gera um arquivo de legendas SRT (ou outro formato) com base no áudio
     with open(subtitles_file, 'w') as f:
         f.write("1\n00:00:00,000 --> 00:00:05,000\nExemplo de legenda em inglês\n\n")  # Exemplo
 
 def upload_video_to_youtube(video_file, title, description, tags, subtitles_file):
-    # Autenticação na API do YouTube
     scopes = ["https://www.googleapis.com/auth/youtube.upload"]
-    credentials, _ = google.auth.default(scopes=scopes)
-
+    
+    # Carregando as credenciais do client_secret
+    client_secret_path = "credentials/canal1_client_secret.json.base64"
+    client_secret = load_json_from_base64(client_secret_path)
+    
+    # Autenticação na API do YouTube
+    credentials = google.auth.default(scopes=scopes)[0]
     youtube = build('youtube', 'v3', credentials=credentials)
 
-    # Upload do vídeo
     body = {
         'snippet': {
             'title': title,

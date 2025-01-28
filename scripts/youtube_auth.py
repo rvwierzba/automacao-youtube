@@ -18,7 +18,7 @@ def load_credentials(client_secret_path, token_path):
     with open(client_secret_path, 'r') as file:
         base64_content = file.read()
     json_content = base64.b64decode(base64_content).decode('utf-8')
-    client_secret = json.loads(json_content)
+    client_secret = json.loads(json_content)  # client_secret agora é um dicionário
 
     creds = None
     if os.path.exists(token_path):
@@ -34,6 +34,7 @@ def load_credentials(client_secret_path, token_path):
                 logging.error(f"Erro ao atualizar o token: {e}")
                 creds = None
             if not creds:
+                # Usa from_client_config em vez de from_client_secrets_file
                 flow = InstalledAppFlow.from_client_config(client_secret, SCOPES)
                 creds = flow.run_console()
                 with open(token_path, 'w') as token:

@@ -4,7 +4,6 @@ import logging
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from moviepy.editor import VideoFileClip, AudioFileClip
-import google.auth  # Importação necessária
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -31,7 +30,7 @@ def validate_client_secret(client_secret):
         raise ValueError("Estrutura de client_secret inválida.")
 
 def create_video_with_audio(video_title, audio_file, output_file):
-    clip = VideoFileClip("path/to/your/image.mp4")  # Substitua pelo caminho correto da sua imagem/vídeo
+    clip = VideoFileClip("<caminho/para/sua/imagem.mp4>")  # Substitua pelo caminho correto da sua imagem/vídeo
     audio = AudioFileClip(audio_file)
     final_clip = clip.set_audio(audio)
     final_clip.write_videofile(output_file, codec='libx264')
@@ -43,10 +42,6 @@ def create_subtitles(video_title, subtitles_file):
 def upload_video_to_youtube(video_file, title, description, tags, subtitles_file, client_secret_path, token_path):
     scopes = ["https://www.googleapis.com/auth/youtube.upload"]
     
-    # Carregar as credenciais do client_secret
-    client_secret = load_json_from_base64(client_secret_path)  # Se ainda for usar base64
-    
-    # Fluxo de autenticação (similar a scripts/youtube_auth.py)
     creds = None
     if os.path.exists(token_path):
         creds = Credentials.from_authorized_user_file(token_path, scopes)
@@ -77,23 +72,10 @@ def upload_video_to_youtube(video_file, title, description, tags, subtitles_file
     request = youtube.videos().insert(part='snippet,status', body=body, media_body=media)
     response = request.execute()
 
-    # Adiciona legendas (implementação a ser feita)
-    # caption_body = {
-    #     'snippet': {
-    #         'videoId': response['id'],
-    #         'language': 'en',
-    #         'name': 'Legendas em Inglês',
-    #         'isDraft': False
-    #     }
-    # }
-    # youtube.captions().insert(part='snippet', body=caption_body, media_body=subtitles_file).execute()
-
 def main(client_secret_path, token_path, video_title, audio_file):
-    client_secret = load_json_from_base64(client_secret_path)
-    token = load_json_from_base64(token_path)
-
-    # Validar client_secret
-    validate_client_secret(client_secret)
+    # Validar client_secret (opcional, se você quiser manter essa validação)
+    # client_secret = load_json_from_base64(client_secret_path)
+    # validate_client_secret(client_secret)
 
     # Criar vídeo com áudio
     output_video_file = "output_video.mp4"
@@ -110,16 +92,14 @@ def main(client_secret_path, token_path, video_title, audio_file):
         "Descrição do vídeo", 
         ["tag1", "tag2"], 
         subtitles_file,
-        client_secret_path,  # Passar o caminho do client_secret
-        token_path  # Passar o caminho do token
+        client_secret_path,
+        token_path
     )
 
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description='Processar credenciais do YouTube e fazer upload de vídeo.')
-    parser.add_argument('--client_secret_path', required=True, help='Caminho para o client_secret em base64')
-    parser.add_argument('--token_path', required=True, help='Caminho para o token em base64')
     parser.add_argument('--video_title', required=True, help='Título do vídeo')
     parser.add_argument('--audio_file', required=True, help='Caminho para o arquivo de áudio')
     args = parser.parse_args()
-    main(args.client_secret_path, args.token_path, args.video_title, args.audio_file)
+    main("credentials/canal1_client_secret.json.base64", "credentials/canal1_token.json.base64", args.video_title, args.audio_file)

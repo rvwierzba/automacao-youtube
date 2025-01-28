@@ -1,8 +1,8 @@
+import os
 import json
 import base64
 import logging
 import argparse
-import os
 
 from video_creator import criar_video
 from youtube_auth import load_credentials

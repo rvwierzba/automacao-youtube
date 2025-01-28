@@ -33,6 +33,8 @@ def main(channel_name):
         # Carrega as credenciais
         client_secret_path = os.path.join('credentials', canal_config['client_secret_file'])
         token_path = os.path.join('credentials', canal_config['token_file'])
+
+        # Chama a função load_credentials com o caminho correto do arquivo
         credentials = load_credentials(client_secret_path, token_path)
 
         # Cria o vídeo

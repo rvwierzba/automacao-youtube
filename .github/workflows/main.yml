@@ -22,18 +22,8 @@ jobs:
 
       - name: Decodificar client_secret.json.base64
         run: |
-          base64 -d credentials/canal1_client_secret.json.base64 > credentials/client_secret.json
-
-      - name: Verificar Presença do Campo 'token_uri' no client_secret.json
-        if: success()
-        run: |
-          if jq -e '.token_uri' credentials/client_secret.json > /dev/null; then
-            echo "'token_uri' está presente."
-          else
-            echo "Erro: Campo 'token_uri' está ausente no client_secret.json."
-            exit 1
-          fi
+          openssl base64 -d -in credentials/canal1_client_secret.json.base64 -out credentials/client_secret.json
 
       - name: Executar Script de Automação
         run: |
-          python scripts/main.py --video-title "<titulo_do_video>" --audio-file "<caminho/para/o/audio.mp3>"
+          python scripts/main.py --channel "fizzquirk"

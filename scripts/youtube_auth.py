@@ -14,6 +14,7 @@ def load_credentials(client_secret_path, token_path):
     """
     Carrega as credenciais do OAuth2.
     """
+    # Carrega o JSON decodificando o base64
     with open(client_secret_path, 'r') as file:
         base64_content = file.read()
     json_content = base64.b64decode(base64_content).decode('utf-8')

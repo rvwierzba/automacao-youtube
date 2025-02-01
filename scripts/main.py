@@ -22,9 +22,8 @@ def main(channel_name):
     Função principal para automatizar o processo de criação e upload de vídeos.
     """
     try:
-        # Carrega as configurações do canal
-        with open('config/channels_config.json', 'r', encoding='utf-8') as f:
-            config = json.load(f)
+        # Carrega as configurações do canal usando load_json_from_base64
+        config = load_json_from_base64('config/channels_config.json')
         canais = config['channels']
         canal_config = next((c for c in canais if c['name'] == channel_name), None)
         if not canal_config:

@@ -14,6 +14,10 @@ def load_json_from_base64(file_path):
     """
     with open(file_path, 'r') as file:
         base64_content = file.read()
+    
+    # Converte para ASCII antes de decodificar
+    base64_content = base64_content.encode('ascii', 'ignore') 
+
     json_content = base64.b64decode(base64_content).decode('utf-8')
     return json.loads(json_content)
 

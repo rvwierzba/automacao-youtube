@@ -29,7 +29,7 @@ google-ai-generativelanguage==0.6.10
 requests-oauthlib>=0.7.0
 rsa<5,>=3.1.4
 google-auth-httplib2<1.0.0,>=0.2.0
-google-api-core!=2.0.,!=2.1.,!=2.2.,!=2.3.0,<3.0.0.dev0,>=1.31.5
+google-api-core>=1.31.5,<3.0.0.dev0  # <--- CORRIGIDO
 typing-extensions
 imageio<3.0,>=2.5
 imageio_ffmpeg>=0.2.0

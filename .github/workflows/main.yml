@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - main
+  # Adicione o agendamento aqui, se desejar:
+  schedule:
+      - cron: '0 9 * * *'  # 5 da manhã (UTC), ajuste para o seu fuso horário
+      - cron: '0 23 * * *' # 7 da noite (UTC), ajuste para seu fuso horário
 
 jobs:
   build:
@@ -26,4 +30,4 @@ jobs:
 
       - name: Executar Script de Automação
         run: |
-          python scripts/main.py --channel "fizzquirk"
+          python scripts/main.py --channel "fizzquirk"  # Substitua "fizzquirk" pelo nome do seu canal, se necessário

@@ -4,6 +4,7 @@ import json
 import base64
 import os
 
+# --- VERSÃO 1:  Se você usar arquivos .base64 (MANTENHA ESTA) ---
 def load_credentials(client_secret_path, token_path):
     """Carrega credenciais do YouTube a partir de arquivos Base64."""
     try:
@@ -12,6 +13,7 @@ def load_credentials(client_secret_path, token_path):
             # NÃO FAZ JOIN AQUI.  client_secret_path JÁ É O CAMINHO COMPLETO.
             client_secret_content = base64.b64decode(file.read()).decode('utf-8')
             client_secret = json.loads(client_secret_content)
+
 
         # Verifica se o token já existe e está válido
         if os.path.exists(token_path):

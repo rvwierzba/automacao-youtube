@@ -4,9 +4,9 @@ import base64
 import logging
 import argparse
 
-from video_creator import criar_video
-from youtube_auth import load_credentials
-from upload_youtube import upload_video
+from video_creator import criar_video  # Importe suas funções
+from youtube_auth import load_credentials  # Importe suas funções
+from upload_youtube import upload_video  # Importe suas funções
 
 def load_json(file_path):
     """
@@ -19,6 +19,7 @@ def load_json(file_path):
         raise FileNotFoundError(f"Arquivo não encontrado: {file_path}")
     except json.JSONDecodeError as e:
         raise ValueError(f"Erro ao decodificar JSON em {file_path}: {e}") from e
+
 
 def main(channel_name):
     """
@@ -40,25 +41,33 @@ def main(channel_name):
             raise ValueError(f"Canal {channel_name} não encontrado na configuração.")
 
         # --- Caminhos absolutos ---
+        #  O erro estava aqui!  Não precisamos mais do '../'
         client_secret_path = os.path.join(base_dir, 'credentials', canal_config['client_secret_file'])
         token_path = os.path.join(base_dir, 'credentials', canal_config['token_file'])
+        print(f"Client secret path: {client_secret_path}") # Debug
+        print(f"Token path: {token_path}") # Debug
+
 
         credentials = load_credentials(client_secret_path, token_path)
 
-        # ---  O restante do seu código permanece o mesmo ---
+        # Cria o vídeo
         logging.info("Criando vídeo...")
-        video_path = criar_video(canal_config['title'], canal_config['description'], canal_config['keywords']) #caminho absoluto aqui
+        # Aqui, se criar_video() RETORNA um caminho relativo, você PRECISA
+        # fazer o join com base_dir.  Se já retorna absoluto, não precisa.
+        video_path = criar_video(canal_config['title'], canal_config['description'], canal_config['keywords'])
+        video_path = os.path.join(base_dir, video_path)  # IMPORTANTE: Ajuste se necessário!
         logging.info(f"Vídeo criado: {video_path}")
+
 
         # Faz o upload do vídeo
         logging.info("Fazendo upload do vídeo...")
         upload_video(video_path, canal_config['title'], canal_config['description'], canal_config['keywords'].split(','), credentials)
         logging.info("Upload do vídeo concluído.")
 
-
     except Exception as e:
-        logging.exception(f"Erro na automação: {e}")
-        raise
+        logging.exception(f"Erro na automação: {e}")  # Use logging.exception para o traceback completo
+        raise  # Re-levanta a exceção
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Automatiza a criação e upload de vídeos no YouTube.')

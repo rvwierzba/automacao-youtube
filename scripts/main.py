@@ -13,26 +13,20 @@ def load_json_from_base64(file_path):
     Carrega um arquivo JSON a partir de um arquivo base64, tentando diferentes codificações.
     Inclui logs detalhados para depuração.
     """
-    with open(file_path, 'r') as file:
-        base64_content = file.read()
-        print(f"Conteúdo base64 lido de {file_path}: {base64_content[:50]}...")  # Imprime os primeiros 50 caracteres
+    try:
+        with open(file_path, 'r') as file:
+            base64_content = file.read().strip()  # Remove espaços em branco e novas linhas
+            print(f"Conteúdo base64 lido de {file_path}: {base64_content[:50]}...")  # Imprime os primeiros 50 caracteres
 
-    base64_content = base64_content.encode('ascii', 'ignore')  # Ignora erros de codificação ASCII
-    print(f"Conteúdo base64 após encode('ascii'): {base64_content[:50]}...")
+        # Decodifica o conteúdo base64
+        json_content = base64.b64decode(base64_content).decode('utf-8')
+        print(f"Conteúdo JSON decodificado: {json_content[:50]}...")  # Imprime os primeiros 50 caracteres do JSON
 
-    for encoding in ['utf-8', 'latin-1', 'windows-1252']:  # Tenta UTF-8, Latin-1 e Windows-1252
-        print(f"Tentando decodificar com {encoding}...")
-        try:
-            json_content = base64.b64decode(base64_content).decode(encoding)
-            print(f"Decodificação com {encoding} bem-sucedida.")
-            return json.loads(json_content)
-        except UnicodeDecodeError as e:
-            print(f"Tentativa de decodificação com {encoding} falhou: {e}")
-        except json.JSONDecodeError as e:
-            print(f"Erro ao decodificar JSON após decodificação base64 com {encoding}: {e}")
-            pass  # Tenta a próxima codificação
-
-    raise ValueError(f"Não foi possível decodificar o arquivo {file_path} com nenhuma das codificações tentadas.")
+        # Converte o conteúdo decodificado para JSON
+        return json.loads(json_content)
+    except Exception as e:
+        print(f"Erro ao decodificar o arquivo {file_path}: {e}")
+        raise ValueError(f"Não foi possível decodificar o arquivo {file_path} com a codificação UTF-8.")
 
 def main(channel_name):
     """

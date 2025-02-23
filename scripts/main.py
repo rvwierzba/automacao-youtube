@@ -29,16 +29,18 @@ def main(channel_name):
     logging.info(f"Iniciando automação para o canal: {channel_name}")
 
     try:
-        # Carrega as configurações do canal diretamente (JSON puro)
-        config = load_json('config/channels_config.json')
+        # Carrega as configurações do canal – CAMINHO CORRIGIDO!
+        config = load_json('../config/channels_config.json')
         canais = config['channels']
         canal_config = next((c for c in canais if c['name'] == channel_name), None)
         if not canal_config:
             raise ValueError(f"Canal {channel_name} não encontrado na configuração.")
 
-        # Carrega as credenciais
-        client_secret_path = os.path.join('credentials', canal_config['client_secret_file'])
-        token_path = os.path.join('credentials', canal_config['token_file'])
+        # Carrega as credenciais – CAMINHO CORRIGIDO!
+        client_secret_path = os.path.join('../credentials', canal_config['client_secret_file'])
+        token_path = os.path.join('../credentials', canal_config['token_file'])
+
+        # load_credentials PRECISA decodificar base64, OU carregar JSON puro.
         credentials = load_credentials(client_secret_path, token_path)
 
         # Cria o vídeo

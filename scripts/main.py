@@ -42,8 +42,8 @@ def main(channel_name):
 
         # --- Caminhos absolutos ---
         #  O erro estava aqui!  Não precisamos mais do '../'
-        client_secret_path = os.path.join(base_dir, 'credentials', canal_config['client_secret_file'])
-        token_path = os.path.join(base_dir, 'credentials', canal_config['token_file'])
+        client_secret_path = os.path.join(base_dir, canal_config['client_secret_file'])  # Removi 'credentials'
+        token_path = os.path.join(base_dir, canal_config['token_file'])  # Removi 'credentials'
         print(f"Client secret path: {client_secret_path}") # Debug
         print(f"Token path: {token_path}") # Debug
 
@@ -57,7 +57,6 @@ def main(channel_name):
         video_path = criar_video(canal_config['title'], canal_config['description'], canal_config['keywords'])
         video_path = os.path.join(base_dir, video_path)  # IMPORTANTE: Ajuste se necessário!
         logging.info(f"Vídeo criado: {video_path}")
-
 
         # Faz o upload do vídeo
         logging.info("Fazendo upload do vídeo...")

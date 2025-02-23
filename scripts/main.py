@@ -4,9 +4,9 @@ import base64
 import logging
 import argparse
 
-from video_creator import criar_video
-from youtube_auth import load_credentials
-from upload_youtube import upload_video
+from video_creator import criar_video  # Importe suas funções
+from youtube_auth import load_credentials  # Importe suas funções
+from upload_youtube import upload_video  # Importe suas funções
 
 def load_json(file_path):
     """
@@ -30,7 +30,11 @@ def main(channel_name):
 
     try:
         # Carrega as configurações do canal – CAMINHO CORRIGIDO!
-        config = load_json('../config/channels_config.json')
+        print(f"Current working directory: {os.getcwd()}")  # DEBUG: Imprime diretório de trabalho
+        config_path = '../config/channels_config.json'  # Caminho relativo corrigido
+        print(f"Config file exists: {os.path.exists(config_path)}")  # DEBUG: Verifica existência
+        print(f"Config file is readable: {os.access(config_path, os.R_OK)}")  # DEBUG: Verifica permissão
+        config = load_json(config_path)
         canais = config['channels']
         canal_config = next((c for c in canais if c['name'] == channel_name), None)
         if not canal_config:

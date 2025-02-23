@@ -12,24 +12,7 @@ jobs:
     steps:
     - name: Run actions/checkout@v3
       uses: actions/checkout@v3
-      with:
-        working-directory: ./  # Define explicitamente o diretório de trabalho
-
-    - name: Listar arquivos (Debug)  # PASSO DE DIAGNÓSTICO
-      run: |
-        echo "Conteúdo da raiz do repositório:"
-        ls -la
-        echo "Conteúdo da pasta config:"
-        ls -la config
-
-    - name: Check current directory  # PASSO DE DIAGNÓSTICO
-      run: pwd
-      shell: bash
-
-    - name: List files and directories # PASSO DE DIAGNÓSTICO
-      run: |
-        ls -lR
-      shell: bash
+      # Remova o with com working-directory
 
     # Decodifica os arquivos ANTES de configurar o Python e instalar dependências.
     - name: Decodificar client_secret.json.base64 e token.json.base64

@@ -1,33 +1,31 @@
-name: Automação de Vídeos
+name: Automação YouTube
 
 on:
+  workflow_dispatch:  # Permite execução manual
   push:
     branches:
-      - main
-  # Adicione o agendamento aqui, se desejar:
-  schedule:
-      - cron: '0 9 * * *'  # 5 da manhã (UTC), ajuste para o seu fuso horário
-      - cron: '0 23 * * *' # 7 da noite (UTC), ajuste para seu fuso horário
+      - main  # Executa no push para main
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+    - name: Run actions/checkout@v3
+      uses: actions/checkout@v3
 
-      - name: Configurar Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.9'
+    # Decodifica os arquivos ANTES de configurar o Python e instalar dependências.
+    - name: Decodificar client_secret.json.base64 e token.json.base64
+      run: |
+        openssl base64 -d -in credentials/canal1_client_secret.json.base64 -out credentials/client_secret.json
+        openssl base64 -d -in credentials/canal1_token.json.base64 -out credentials/token.json
 
-      - name: Instalar dependências
-        run: |
-          pip install --upgrade -r requirements.txt
+    - name: Configurar Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
 
-      - name: Decodificar client_secret.json.base64
-        run: |
-          openssl base64 -d -in credentials/canal1_client_secret.json.base64 -out credentials/client_secret.json
+    - name: Instalar dependências
+      run: pip install --upgrade -r requirements.txt
 
-      - name: Executar Script de Automação
-        run: |
-          python scripts/main.py --channel "fizzquirk"  # Substitua "fizzquirk" pelo nome do seu canal, se necessário
+    - name: Executar Script de Automação
+      run: python scripts/main.py --channel "fizzquirk"

@@ -13,6 +13,13 @@ jobs:
     - name: Run actions/checkout@v3
       uses: actions/checkout@v3
 
+    - name: Listar arquivos (Debug)
+      run: |
+        echo "Conteúdo da raiz do repositório:"
+          ls -la
+          echo "Conteúdo da pasta config:"
+          ls -la config
+
     # Decodifica os arquivos ANTES de configurar o Python e instalar dependências.
     - name: Decodificar client_secret.json.base64 e token.json.base64
       run: |

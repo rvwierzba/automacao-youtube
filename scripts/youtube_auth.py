@@ -6,34 +6,17 @@ import os
 
 def load_credentials(client_secret_path, token_path):
     """Carrega credenciais do YouTube a partir de arquivos Base64,
-       tentando corrigir problemas de codificação."""
+       tratando BOMs e erros de decodificação."""
     try:
-        # 1. Decodifica o client_secret
+        # Decodifica client_secret *ANTES* de tentar carregar como JSON
         with open(client_secret_path, 'r') as file:
-            client_secret_content = base64.b64decode(file.read())
+            client_secret_content = base64.b64decode(file.read()).decode('utf-8-sig')  # Decodifica o base64 e REMOVE BOM
+            client_secret = json.loads(client_secret_content)  # Carrega o JSON
 
-        # 2. Tenta decodificar como UTF-8, removendo BOM se necessário
-        try:
-            client_secret_text = client_secret_content.decode('utf-8-sig')
-        except UnicodeDecodeError:
-            # Se UTF-8 falhar, tenta outras codificações comuns
-            for encoding in ['utf-16le', 'utf-16be', 'utf-32le', 'utf-32be', 'latin-1', 'cp1252']:
-                try:
-                    client_secret_text = client_secret_content.decode(encoding)
-                    print(f"Decodificado com sucesso usando {encoding}")
-                    break  # Sai do loop se a decodificação funcionar
-                except UnicodeDecodeError:
-                    continue  # Tenta a próxima codificação
-            else:  # Se nenhuma codificação funcionar...
-                raise ValueError("Não foi possível decodificar o client_secret com nenhuma codificação conhecida.")
-
-        client_secret = json.loads(client_secret_text)
-
-        # --- (Restante do código permanece o MESMO) ---
         # Verifica se o token já existe e está válido
         if os.path.exists(token_path):
             with open(token_path, 'r') as file:
-                token_content = base64.b64decode(file.read()).decode('utf-8-sig')  # Decodifica, remove BOM
+                token_content = base64.b64decode(file.read()).decode('utf-8-sig')  # Decodifica o base64, e remove BOM
                 credentials = google.oauth2.credentials.Credentials.from_authorized_user_info(
                     json.loads(token_content),
                     scopes=client_secret['installed']['scopes'] if 'installed' in client_secret else client_secret['web']['scopes']

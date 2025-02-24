@@ -10,10 +10,10 @@ from upload_youtube import upload_video  # Importe suas funções.
 
 def load_json(file_path):
     """
-    Carrega um arquivo JSON, tratando erros de arquivo, decodificação e BOM.
+    Carrega um arquivo JSON, tratando erros de arquivo e decodificação.
     """
     try:
-        with open(file_path, 'r', encoding='utf-8-sig') as file:  # Use utf-8-sig
+        with open(file_path, 'r', encoding='utf-8-sig') as file:  # Assume UTF-8.  Ajuste se necessário.
             return json.load(file)
     except FileNotFoundError:
         raise FileNotFoundError(f"Arquivo não encontrado: {file_path}")
@@ -40,11 +40,11 @@ def main(channel_name):
         if not canal_config:
             raise ValueError(f"Canal {channel_name} não encontrado na configuração.")
 
-        # --- Caminhos absolutos ---
+        # --- Caminhos absolutos, usando os nomes dos arquivos do JSON ---
         client_secret_path = os.path.join(base_dir, canal_config['client_secret_file'])
         token_path = os.path.join(base_dir, canal_config['token_file'])
-        logging.debug(f"Client secret path: {client_secret_path}")
-        logging.debug(f"Token path: {token_path}")
+        logging.debug(f"Client secret path: {client_secret_path}")  # Log do caminho
+        logging.debug(f"Token path: {token_path}")  # Log do caminho
 
         credentials = load_credentials(client_secret_path, token_path)
 
@@ -52,7 +52,7 @@ def main(channel_name):
         logging.info("Criando vídeo...")
         # IMPORTANTE: Se criar_video retornar um caminho RELATIVO, use os.path.join.
         video_path = criar_video(canal_config['title'], canal_config['description'], canal_config['keywords'])
-        video_path = os.path.join(base_dir, video_path)  # GARANTIA de caminho absoluto.
+        video_path = os.path.join(base_dir, video_path)  # GARANTIA de caminho absoluto
         logging.info(f"Vídeo criado: {video_path}")
 
         # --- Upload do vídeo ---
@@ -61,7 +61,7 @@ def main(channel_name):
         logging.info("Upload do vídeo concluído.")
 
     except Exception as e:
-        logging.exception(f"Erro na automação: {e}")
+        logging.exception(f"Erro na automação: {e}")  # Log completo do erro
         raise
 
 if __name__ == "__main__":

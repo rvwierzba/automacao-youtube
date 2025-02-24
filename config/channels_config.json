@@ -2,8 +2,8 @@
   "channels": [
     {
       "name": "fizzquirk",
-      "client_secret_file": "canal1_client_secret.json.base64",
-      "token_file": "canal1_token.json.base64",
+      "client_secret_file": "credentials/canal1_client_secret.json.base64",
+      "token_file": "credentials/canal1_token.json.base64",
       "title": "fizzquirk",
       "description": "💡 Brightening your day with cool facts! 🌟 #FizzQuirk",
       "keywords": "curiosities, curious facts, curious world, interesting things"

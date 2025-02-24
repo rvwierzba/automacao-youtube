@@ -17,13 +17,20 @@ channels_config_data = {
 }
 
 # --- COLE O CONTEÚDO *COMPLETO* DO SEU client_secret.json AQUI ---
-#     (aquele que você BAIXOU do Google Cloud, SEM base64)
-client_secret_data = """
-{
-"COLE O CONTEÚDO AQUI"
+# Cole o JSON *válido*, baixado do Google Cloud, formatado.
+# Use um validador de JSON online se tiver dúvidas.
+client_secret_data = {
+    "installed": {
+        "client_id": "SEU CLIENT ID AQUI",
+        "project_id": "SEU PROJECT ID AQUI",
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+        "client_secret": "SEU CLIENT SECRET AQUI",
+        "redirect_uris": ["SEU REDIRECT URI AQUI"]  # Use uma lista, mesmo com um só
+    }
 }
-"""
-# ---  FIM DA COLAGEM ---.  MANTENHA AS TRÊS ASPAS DUPLAS.
+# --- FIM DA COLAGEM ---
 
 
 # --- Cria os diretórios se não existirem ---
@@ -36,18 +43,18 @@ with open("config/channels_config.json", "w", encoding="utf-8") as f:
 
 # --- Salva client_secret.json (UTF-8, sem BOM) ---
 with open("credentials/client_secret.json", "w", encoding="utf-8") as f:
-    f.write(client_secret_data) # Escreve a string *diretamente*
+    json.dump(client_secret_data, f, indent=2)  # Salva como JSON formatado
 
 
 # --- Cria os arquivos .base64 ---
 def encode_to_base64(input_file, output_file):
     with open(input_file, 'rb') as infile:  # Abre em modo binário ('rb')
-        file_content = infile.read() # Lê como bytes
+        file_content = infile.read()  # Lê como bytes
     encoded_content = base64.b64encode(file_content).decode('ascii')  # Codifica para Base64
     with open(output_file, 'w') as outfile:
-        outfile.write(encoded_content) # Escreve a string Base64.
+        outfile.write(encoded_content)  # Escreve a string Base64.
 
 encode_to_base64("credentials/client_secret.json", "credentials/canal1_client_secret.json.base64")
-# Não gere token.json.base64 agora. O main.py/youtube_auth.py fará isso.
+# Não gere token.json.base64 agora.  O main.py/youtube_auth.py fará isso.
 
 print("Arquivos JSON e Base64 criados/atualizados com sucesso!")

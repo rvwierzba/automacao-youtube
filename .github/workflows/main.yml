@@ -12,6 +12,7 @@ jobs:
     steps:
     - name: Run actions/checkout@v3
       uses: actions/checkout@v3
+      # Remova o with com working-directory, se houver
 
     # Decodifica os arquivos ANTES de configurar o Python e instalar dependências.
     - name: Decodificar client_secret.json.base64 e token.json.base64

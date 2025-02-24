@@ -21,15 +21,16 @@ channels_config_data = {
 #     DEVE SER UM JSON VÁLIDO!
 client_secret_data = """
 {
-    "installed": {
-        "client_id": "SEU NOVO CLIENT ID AQUI",
-        "project_id": "SEU NOVO PROJECT ID AQUI",
-        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-        "token_uri": "https://oauth2.googleapis.com/token",
-        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-        "client_secret": "SEU NOVO CLIENT SECRET AQUI",
-        "redirect_uris": ["SEU NOVO REDIRECT URI AQUI"]
-    }
+  "installed":{
+    
+    "client_id":"314158891397-q0qo0cdvu97i0g0128udmkamdo636je9.apps.googleusercontent.com",
+    "project_id":"automacaoyoutube-442317",
+    "auth_uri":"https://accounts.google.com/o/oauth2/auth",
+    "token_uri":"https://oauth2.googleapis.com/token",
+    "auth_provider_x509_cert_url":"https://www.googleapis.com/oauth2/v1/certs",
+    "client_secret":"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",
+    "redirect_uris":["http://localhost"]
+  }
 }
 """
 # --- FIM DA COLAGEM ---.  MANTENHA AS TRÊS ASPAS DUPLAS.

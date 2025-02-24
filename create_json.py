@@ -16,7 +16,7 @@ channels_config_data = {
   ]
 }
 
-# --- COLE O CONTEÚDO *COMPLETO* DO SEU NOVO client_secret.json AQUI ---
+# --- COLE O CONTEÚDO *COMPLETO* DO SEU client_secret.json AQUI ---
 #     (aquele que você BAIXOU do Google Cloud, SEM base64)
 #     DEVE SER UM JSON VÁLIDO!
 client_secret_data = """
@@ -35,6 +35,7 @@ client_secret_data = """
 """
 # --- FIM DA COLAGEM ---.  MANTENHA AS TRÊS ASPAS DUPLAS.
 
+
 # --- Cria os diretórios se não existirem ---
 os.makedirs("config", exist_ok=True)
 os.makedirs("credentials", exist_ok=True)
@@ -44,14 +45,14 @@ with open("config/channels_config.json", "w", encoding="utf-8") as f:
     json.dump(channels_config_data, f, indent=2)  # Formata o JSON
 
 # --- Salva client_secret.json (UTF-8, sem BOM) ---
-# Agora usando json.dumps, que é o correto!
+# Agora usando json.loads e json.dump para GARANTIR a formatação correta.
 try:
     client_secret = json.loads(client_secret_data)  # CONVERTE a string em um objeto JSON
     with open("credentials/client_secret.json", "w", encoding="utf-8") as f:
         json.dump(client_secret, f, indent=2) # Salva o objeto JSON como arquivo, formatado.
 except json.JSONDecodeError as e:
     print(f"ERRO CRÍTICO: O JSON que você colou em client_secret_data é INVÁLIDO: {e}")
-    print("CORRIJA O JSON ANTES DE CONTINUAR. Use um validador de JSON online se necessário.")
+    print("Verifique se você copiou o conteúdo CORRETO e COMPLETO do seu client_secret.json.")
     exit(1) # Sai do script com erro.  Não adianta continuar se o JSON estiver errado.
 
 # --- Cria os arquivos .base64 ---

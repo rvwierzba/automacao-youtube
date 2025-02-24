@@ -13,7 +13,7 @@ def load_json(file_path):
     Carrega um arquivo JSON, tratando erros de arquivo e decodificação.
     """
     try:
-        with open(file_path, 'r', encoding='utf-8-sig') as file:  # Usa utf-8-sig para remover BOM
+        with open(file_path, 'r', encoding='utf-8-sig') as file:  # Assume UTF-8. Ajuste se necessário.
             return json.load(file)
     except FileNotFoundError:
         raise FileNotFoundError(f"Arquivo não encontrado: {file_path}")
@@ -32,7 +32,7 @@ def main(channel_name):
         # --- Caminho absoluto usando GITHUB_WORKSPACE ---
         base_dir = os.environ['GITHUB_WORKSPACE']
         config_path = os.path.join(base_dir, 'config', 'channels_config.json')
-        logging.debug(f"Config file path: {config_path}")
+        logging.debug(f"Config file path: {config_path}")  # Log do caminho
 
         config = load_json(config_path)
         canais = config['channels']
@@ -41,19 +41,18 @@ def main(channel_name):
             raise ValueError(f"Canal {channel_name} não encontrado na configuração.")
 
         # --- Caminhos absolutos, usando os nomes dos arquivos do JSON ---
-        client_secret_path = os.path.join(base_dir, 'credentials', canal_config['client_secret_file'])
-        token_path = os.path.join(base_dir, 'credentials', canal_config['token_file'])
-        logging.debug(f"Client secret path: {client_secret_path}")
-        logging.debug(f"Token path: {token_path}")
-
+        client_secret_path = os.path.join(base_dir, canal_config['client_secret_file'])
+        token_path = os.path.join(base_dir, canal_config['token_file'])
+        logging.debug(f"Client secret path: {client_secret_path}")  # Log do caminho
+        logging.debug(f"Token path: {token_path}")  # Log do caminho
 
         credentials = load_credentials(client_secret_path, token_path)
 
-        # --- Criação do vídeo ---
+        # --- Criação do vídeo (substitua pela sua lógica) ---
         logging.info("Criando vídeo...")
-        # Se criar_video retornar um caminho RELATIVO, use os.path.join
+        # IMPORTANTE: Se criar_video retornar um caminho RELATIVO, use os.path.join.
         video_path = criar_video(canal_config['title'], canal_config['description'], canal_config['keywords'])
-        video_path = os.path.join(base_dir, video_path) #garantir o path absoluto
+        video_path = os.path.join(base_dir, video_path)  # GARANTIA de caminho absoluto
         logging.info(f"Vídeo criado: {video_path}")
 
         # --- Upload do vídeo ---
@@ -62,8 +61,9 @@ def main(channel_name):
         logging.info("Upload do vídeo concluído.")
 
     except Exception as e:
-        logging.exception(f"Erro na automação: {e}")
+        logging.exception(f"Erro na automação: {e}")  # Log completo do erro
         raise
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Automatiza a criação e upload de vídeos no YouTube.')

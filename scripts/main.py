@@ -13,7 +13,7 @@ def load_json(file_path):
     Carrega um arquivo JSON, tratando erros de arquivo e decodificação.
     """
     try:
-        with open(file_path, 'r', encoding='utf-8-sig') as file:  # Assume UTF-8. Ajuste se necessário.
+        with open(file_path, 'r', encoding='utf-8-sig') as file:  # Assume UTF-8-sig
             return json.load(file)
     except FileNotFoundError:
         raise FileNotFoundError(f"Arquivo não encontrado: {file_path}")
@@ -41,6 +41,7 @@ def main(channel_name):
             raise ValueError(f"Canal {channel_name} não encontrado na configuração.")
 
         # --- Caminhos absolutos, usando os nomes dos arquivos do JSON ---
+        # CORRIGIDO: Removido 'credentials/' extra do os.path.join
         client_secret_path = os.path.join(base_dir, canal_config['client_secret_file'])
         token_path = os.path.join(base_dir, canal_config['token_file'])
         logging.debug(f"Client secret path: {client_secret_path}")  # Log do caminho

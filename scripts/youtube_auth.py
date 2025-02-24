@@ -9,16 +9,13 @@ def load_credentials(client_secret_path, token_path):
     try:
         # Decodifica client_secret *ANTES* de tentar carregar como JSON
         with open(client_secret_path, 'r') as file:
-            client_secret_content = file.read() # Lê o conteúdo Base64 como string
-
-        client_secret_content = base64.b64decode(client_secret_content).decode('utf-8-sig')  # Decodifica o base64, e JÁ REMOVE O BOM
-        client_secret = json.loads(client_secret_content)  # Carrega o JSON
-
+            client_secret_content = base64.b64decode(file.read()).decode('utf-8-sig')  # Decodifica o base64, REMOVE BOM
+            client_secret = json.loads(client_secret_content)  # Carrega o JSON
 
         # Verifica se o token já existe e está válido
         if os.path.exists(token_path):
             with open(token_path, 'r') as file:
-                token_content = base64.b64decode(file.read()).decode('utf-8-sig')  # Decodifica o Base64, e JÁ REMOVE O BOM
+                token_content = base64.b64decode(file.read()).decode('utf-8-sig')  # Decodifica o base64, e remove o BOM
                 credentials = google.oauth2.credentials.Credentials.from_authorized_user_info(
                     json.loads(token_content),
                     scopes=client_secret['installed']['scopes'] if 'installed' in client_secret else client_secret['web']['scopes']

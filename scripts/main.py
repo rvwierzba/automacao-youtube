@@ -1,72 +1,28 @@
 import os
-import json
-import base64
-import logging
 import argparse
+import logging
+import json
 
-from video_creator import criar_video  # VOCÊ PRECISA FORNECER ESTE ARQUIVO.
-from youtube_auth import load_credentials
-from upload_youtube import upload_video
+logging.basicConfig(level=logging.INFO)
 
-def load_json(file_path):
-    """
-    Carrega um arquivo JSON, tratando erros de arquivo e decodificação.
-    """
+def main(channel):
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    credentials_dir = os.path.join(base_dir, 'credentials')
+    credential_file = 'canal1_client_secret.json.base64'
+
+    credential_path = os.path.join(credentials_dir, credential_file)
+
     try:
-        with open(file_path, 'r', encoding='utf-8-sig') as file:  # Usa utf-8-sig para remover BOM
-            return json.load(file)
+        with open(credential_path, 'r') as f:
+            # Lógica para processar o arquivo de credenciais
+            logging.info(f"Arquivo de credenciais encontrado: {credential_path}")
+            # ... resto do seu código ...
     except FileNotFoundError:
-        raise FileNotFoundError(f"Arquivo não encontrado: {file_path}")
-    except json.JSONDecodeError as e:
-        raise ValueError(f"Erro ao decodificar JSON em {file_path}: {e}") from e
-
-def main(channel_name):
-    """
-    Função principal para automatizar o processo de criação e upload de vídeos.
-    """
-    logging.basicConfig(level=logging.INFO)
-    logging.info(f"Iniciando automação para o canal: {channel_name}")
-
-    try:
-        # --- Caminho absoluto usando GITHUB_WORKSPACE ---
-        base_dir = os.environ['GITHUB_WORKSPACE']
-       credentials_dir = os.path.join(base_dir, 'credentials')
-       credential_file = 'canal1_client_secret.json.base64'  # Substitua pelo nome correto do arquivo
-
-        credential_path = os.path.join(credentials_dir, credential_file)
-        logging.debug(f"Config file path: {config_path}")
-
-        config = load_json(config_path)
-        canais = config['channels']
-        canal_config = next((c for c in canais if c['name'] == channel_name), None)
-        if not canal_config:
-            raise ValueError(f"Canal {channel_name} não encontrado na configuração.")
-
-        # --- Caminhos absolutos, usando os nomes dos arquivos do JSON ---
-        client_secret_path = os.path.join(base_dir, canal_config['../credentials/canal1_client_secret.json.base64'])
-        token_path = os.path.join(base_dir, canal_config['../crdentials/canal1_client_secret.json.base64'])
-        logging.debug(f"Client secret path: {client_secret_path}")
-        logging.debug(f"Token path: {token_path}")
-
-        credentials = load_credentials(client_secret_path, token_path)
-
-        # --- Criação do vídeo ---
-        logging.info("Criando vídeo...")
-        video_path = criar_video(canal_config['title'], canal_config['description'], canal_config['keywords'])
-        video_path = os.path.join(base_dir, video_path)  # GARANTIA de caminho absoluto
-        logging.info(f"Vídeo criado: {video_path}")
-
-        # --- Upload do vídeo ---
-        logging.info("Fazendo upload do vídeo...")
-        upload_video(video_path, canal_config['title'], canal_config['description'], canal_config['keywords'].split(','), credentials)
-        logging.info("Upload do vídeo concluído.")
-
-    except Exception as e:
-        logging.exception(f"Erro na automação: {e}")
-        raise
+        logging.error(f"Arquivo de credenciais não encontrado em: {credential_path}")
+        return
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Automatiza a criação e upload de vídeos no YouTube.')
-    parser.add_argument('--channel', type=str, required=True, help='Nome do canal a ser usado.')
+    parser = argparse.ArgumentParser(description="Automatiza o YouTube.")
+    parser.add_argument("--channel", required=True, help="Nome do canal a ser automatizado.")
     args = parser.parse_args()
     main(args.channel)

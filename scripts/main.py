@@ -30,7 +30,10 @@ def main(channel_name):
     try:
         # --- Caminho absoluto usando GITHUB_WORKSPACE ---
         base_dir = os.environ['GITHUB_WORKSPACE']
-        config_path = os.path.join(base_dir, 'config', 'channels_config.json')
+       credentials_dir = os.path.join(base_dir, 'credentials')
+       credential_file = 'canal1_client_secret.json.base64'  # Substitua pelo nome correto do arquivo
+
+        credential_path = os.path.join(credentials_dir, credential_file)
         logging.debug(f"Config file path: {config_path}")
 
         config = load_json(config_path)

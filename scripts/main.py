@@ -40,8 +40,8 @@ def main(channel_name):
             raise ValueError(f"Canal {channel_name} não encontrado na configuração.")
 
         # --- Caminhos absolutos, usando os nomes dos arquivos do JSON ---
-        client_secret_path = os.path.join(base_dir, canal_config['client_secret_file'])
-        token_path = os.path.join(base_dir, canal_config['token_file'])
+        client_secret_path = os.path.join(base_dir, canal_config['credentials/canal1_client_secret.json.base64'])
+        token_path = os.path.join(base_dir, canal_config['crdentials/canal1_client_secret.json.base64'])
         logging.debug(f"Client secret path: {client_secret_path}")
         logging.debug(f"Token path: {token_path}")
 

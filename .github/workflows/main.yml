@@ -15,39 +15,106 @@ jobs:
       # Remova o with com working-directory, se houver
 
     # Decodifica os arquivos ANTES de configurar o Python e instalar dependências.
-    # NOTA: Mantenha este passo ANTES da instalação de dependências,
-    # pois o script de decodificação (openssl) é um comando do sistema
-    # e não depende do ambiente Python.
+    # NOTA: Mantenha este passo ANTES da instalação de dependências.
     - name: Decodificar client_secret.json.base64 e token.json.base64
       run: |
+        echo "--- Iniciando decodificação dos arquivos de credenciais ---"
         # Certifique-se de que a pasta credentials existe
         mkdir -p credentials
-        openssl base64 -d -in credentials/canal1_client_secret.json.base64 -out credentials/client_secret.json
-        openssl base64 -d -in credentials/canal1_token.json.base64 -out credentials/token.json
+        
+        # --- Processar client_secret ---
+        INPUT_CS_BASE64="credentials/canal1_client_secret.json.base64"
+        OUTPUT_CS_JSON="credentials/client_secret.json"
+        
+        echo "Processando client_secret..."
+        if [ -f "$INPUT_CS_BASE64" ]; then
+          echo "Arquivo Base64 de entrada ($INPUT_CS_BASE64) encontrado."
+          echo "Conteúdo bruto do Base64 (primeiros 50 caracteres):"
+          head -c 50 "$INPUT_CS_BASE64"
+          echo "" # Quebra de linha
+          
+          openssl base64 -d -in "$INPUT_CS_BASE64" -out "$OUTPUT_CS_JSON"
+          
+          if [ $? -eq 0 ]; then
+            echo "Comando openssl base64 -d para client_secret executado com sucesso."
+            if [ -s "$OUTPUT_CS_JSON" ]; then
+              echo "Arquivo de saída ($OUTPUT_CS_JSON) criado com sucesso e não vazio."
+            else
+              echo "AVISO: Arquivo de saída ($OUTPUT_CS_JSON) criado, mas está vazio! Verifique o conteúdo do arquivo base64 de entrada."
+            fi
+          else
+            echo "ERRO: Falha na execução do comando openssl base64 -d para client_secret."
+            exit 1 # Falha no step se a decodificação falhar
+          fi
+        else
+          echo "ERRO: Arquivo Base64 do client_secret NÃO encontrado: $INPUT_CS_BASE64"
+          exit 1 # Falha no step se o arquivo Base64 não existir
+        fi
+        
+        echo "---"
+        
+        # --- Processar token ---
+        INPUT_TOKEN_BASE64="credentials/canal1_token.json.base64"
+        OUTPUT_TOKEN_JSON="credentials/token.json"
+        
+        echo "Processando token..."
+        if [ -f "$INPUT_TOKEN_BASE64" ]; then
+          echo "Arquivo Base64 de entrada ($INPUT_TOKEN_BASE64) encontrado."
+           echo "Conteúdo bruto do Base64 (primeiros 50 caracteres):"
+          head -c 50 "$INPUT_TOKEN_BASE64"
+          echo "" # Quebra de linha
+          
+          openssl base64 -d -in "$INPUT_TOKEN_BASE64" -out "$OUTPUT_TOKEN_JSON"
+          
+          if [ $? -eq 0 ]; then
+            echo "Comando openssl base64 -d para token executado com sucesso."
+            if [ -s "$OUTPUT_TOKEN_JSON" ]; then
+              echo "Arquivo de saída ($OUTPUT_TOKEN_JSON) criado com sucesso e não vazio."
+            else
+              echo "AVISO: Arquivo de saída ($OUTPUT_TOKEN_JSON) criado, mas está vazio! Verifique o conteúdo do arquivo base64 de entrada."
+              # Não damos exit 1 aqui para ver o que acontece no script Python, mas é um aviso sério.
+            fi
+          else
+            echo "ERRO: Falha na execução do comando openssl base64 -d para token."
+             # Não damos exit 1 aqui para ver o erro subsequente no script Python, mas é um aviso sério.
+          fi
+        else
+          echo "AVISO: Arquivo Base64 do token NÃO encontrado: $INPUT_TOKEN_BASE64. O script Python provavelmente falhará ao tentar carregá-lo."
+          # Não damos exit 1 aqui para ver o erro subsequente no script Python.
+        fi
+        echo "--- Fim da decodificação ---"
 
-    # --- NOVOS PASSOS DE INSPEÇÃO ---
+
+    # --- PASSOS DE INSPEÇÃO (manter) ---
     # Estes passos vão imprimir o início dos arquivos decodificados no log para debug
     - name: Inspecionar client_secret.json decodificado
       run: |
-        echo "--- Conteúdo de credentials/client_secret.json (Primeiros 20 bytes em Hex)"
-        # Usa head para pegar os primeiros 20 bytes e hexdump para mostrá-los em hex
-        head -c 20 credentials/client_secret.json | hexdump -C
-        echo "--- Conteúdo de credentials/client_secret.json (Completo)"
-        # Usa cat para imprimir o conteúdo completo (pode ser útil para ver o JSON)
-        cat credentials/client_secret.json
-        echo "--- Fim da inspeção de client_secret.json"
-      # Use continue-on-error: true para que o workflow não pare aqui, mesmo que algo dê errado
-      # na inspeção (ex: arquivo não encontrado, embora improvável após a decodificação).
-      continue-on-error: true
+        echo "--- Conteúdo de credentials/client_secret.json (Primeiros 20 bytes em Hex) ---"
+        if [ -f "credentials/client_secret.json" ]; then
+          head -c 20 credentials/client_secret.json | hexdump -C
+          echo "--- Conteúdo de credentials/client_secret.json (Completo) ---"
+          # Limita o cat a, digamos, 500 caracteres para não poluir muito o log se for um arquivo grande
+          head -c 500 credentials/client_secret.json
+          echo "" # Quebra de linha
+        else
+          echo "Arquivo credentials/client_secret.json NÃO encontrado após decodificação."
+        fi
+        echo "--- Fim da inspeção de client_secret.json ---"
+      continue-on-error: true # Permite que o resto do workflow continue
 
     - name: Inspecionar token.json decodificado
       run: |
-        echo "--- Conteúdo de credentials/token.json (Primeiros 20 bytes em Hex)"
-        head -c 20 credentials/token.json | hexdump -C
-        echo "--- Conteúdo de credentials/token.json (Completo)"
-        cat credentials/token.json
-        echo "--- Fim da inspeção de token.json"
-      continue-on-error: true
+        echo "--- Conteúdo de credentials/token.json (Primeiros 20 bytes em Hex) ---"
+        if [ -f "credentials/token.json" ]; then
+          head -c 20 credentials/token.json | hexdump -C
+          echo "--- Conteúdo de credentials/token.json (Completo) ---"
+          head -c 500 credentials/token.json
+          echo "" # Quebra de linha
+        else
+          echo "Arquivo credentials/token.json NÃO encontrado após decodificação."
+        fi
+        echo "--- Fim da inspeção de token.json ---"
+      continue-on-error: true # Permite que o resto do workflow continue
     # --- FIM DOS NOVOS PASSOS ---
 
     - name: Configurar Python
@@ -56,14 +123,10 @@ jobs:
         python-version: '3.9'
 
     - name: Limpar cache do pip
-      # O cache do pip é separado por versão do Python, limpar pode ser útil
-      # após configurar a versão do Python.
       run: pip cache purge
 
     - name: Instalar dependências
-      # Este passo agora virá DEPOIS da decodificação e inspeção
       run: pip install --upgrade -r requirements.txt
 
     - name: Executar Script de Automação
-      # Este passo virá DEPOIS da decodificação, inspeção e instalação
       run: python scripts/main.py --channel "fizzquirk"

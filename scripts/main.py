@@ -3,6 +3,7 @@ import argparse
 import logging
 import json
 import sys
+import time # Importar módulo time, útil para esperas ou nomes de arquivo únicos
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
@@ -13,10 +14,10 @@ from googleapiclient.http import MediaFileUpload
 # Para gerar áudio a partir de texto
 from gtts import gTTS
 # Para processamento e edição de vídeo
-from moviepy.editor import AudioFileClip, ImageClip, concatenate_videoclips, TextClip, CompositeVideoClip, ColorClip
-import moviepy.video.io.ffmpeg_tools as ffmpeg_tools
+from moviepy.editor import AudioFileClip, ImageClip, concatenate_videoclips, TextClip, CompositeVideoClip, ColorClip, vfx
 # Pode precisar de Pillow para TextClip/ImageClip dependendo da instalação MoviePy
-from PIL import Image # Importar Pillow/PIL
+from PIL import Image # Importar Pillow/PIL - Certifique-se de ter 'Pillow' no seu requirements.txt
+
 
 # Configurar logging para enviar output para o console do Actions
 logging.basicConfig(level=logging.INFO, stream=sys.stdout, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -42,13 +43,11 @@ def get_authenticated_service(client_secrets_path, token_path):
         logging.info("Credenciais expiradas, tentando atualizar usando refresh token.")
         try:
             logging.info(f"Carregando client_secrets de {client_secrets_path} para auxiliar o refresh...")
-            # Use InstalledAppFlow para carregar client_secrets e configurar o refresh
             flow = InstalledAppFlow.from_client_secrets_file(client_secrets_path, SCOPES)
-            # Define as credenciais existentes (com refresh token) no objeto flow
             flow.credentials = creds
             logging.info("Chamando flow.refresh_credentials()...")
-            flow.refresh_credentials() # Tenta usar o refresh token
-            creds = flow.credentials # Atualiza creds com o token de acesso recém-obtido
+            flow.refresh_credentials()
+            creds = flow.credentials
             logging.info("Token de acesso atualizado com sucesso usando refresh token.")
 
             logging.info(f"Salvando token atualizado em {token_path}...")
@@ -96,14 +95,15 @@ def get_authenticated_service(client_secrets_path, token_path):
 # --- NOVAS FUNÇÕES PARA CRIAÇÃO DE CONTEÚDO E VÍDEO ---
 
 # Função placeholder para obter fatos/texto (você precisa implementar a lógica real)
-# Use as keywords do canal como base.
+# Use as keywords do canal como base. A linguagem deve ser INGLÊS.
 def get_facts_for_video(keywords, num_facts=5):
-    logging.info(f"Gerando fatos baseados nas keywords: {keywords}")
+    logging.info(f"Gerando fatos baseados nas keywords (Inglês): {keywords}")
     # >>>>> SEU CÓDIGO PARA OBTER FATOS REAIS VEM AQUI <<<<<
-    # Você pode usar APIs, scraping (com cuidado e respeitando termos de serviço),
-    # ou ter uma lista predefinida. Certifique-se de que os fatos são em INGLÊS.
-    
-    # Exemplo Simples (Substitua pela sua lógica real):
+    # Você pode usar APIs (como de curiosidades, fatos aleatórios), scraping (com cuidado!),
+    # ou ter uma lista predefinida de fatos em INGLÊS.
+    # O código abaixo é apenas um exemplo estático.
+
+    # Exemplo Simples Estático (Substitua pela sua lógica real):
     facts = [
         "Did you know that a group of owls is called a parliament?",
         "Honey never spoils. Archaeologists have even found pots of honey in ancient Egyptian tombs that are over 3,000 years old and still edible!",
@@ -113,17 +113,22 @@ def get_facts_for_video(keywords, num_facts=5):
     ]
     # <<<<< FIM DO SEU CÓDIGO PARA OBTER FATOS REAIS >>>>>
 
-    logging.info(f"Gerados {len(facts)} fatos.")
+    if not facts:
+        logging.warning("Nenhum fato foi gerado.")
+    else:
+        logging.info(f"Gerados {len(facts)} fatos.")
+
     return facts
 
 # Função para gerar áudio em inglês a partir de texto usando gTTS
+# Salva o arquivo de áudio em uma pasta temporária
 def generate_audio_from_text(text, lang='en', output_filename="audio.mp3"):
     logging.info(f"Gerando áudio para o texto (língua: {lang})...")
     try:
-        # Certifique-se que o output_filename está em um diretório acessível
-        audio_path = os.path.join("temp", output_filename) # Salva em uma pasta temporária
-        # Cria a pasta temp se não existir
-        os.makedirs(os.path.dirname(audio_path), exist_ok=True)
+        # Define o caminho de saída dentro de uma pasta temporária
+        output_dir = "temp_audio"
+        os.makedirs(output_dir, exist_ok=True) # Cria a pasta temp_audio se não existir
+        audio_path = os.path.join(output_dir, output_filename)
 
         tts = gTTS(text=text, lang=lang, slow=False)
         tts.save(audio_path)
@@ -133,100 +138,126 @@ def generate_audio_from_text(text, lang='en', output_filename="audio.mp3"):
         logging.error(f"ERRO ao gerar áudio: {e}", exc_info=True)
         return None
 
-# Função placeholder para criar o vídeo final (você precisa implementar a lógica MoviePy)
-# Este é um exemplo BEM simples. Adapte para o estilo visual do seu canal.
+# Função para criar o vídeo final usando MoviePy
+# Este é um exemplo BEM simples (texto na tela preta) que você deve adaptar.
+# Você precisará de lógica mais complexa para visuais, sincronização detalhada, etc.
 def create_video_from_facts(facts, audio_path, channel_title="Video"):
-    logging.info(f"Criando vídeo a partir de {len(facts)} fatos com áudio de {audio_path}...")
+    logging.info(f"Criando vídeo a partir de {len(facts)} fatos com áudio de {audio_path} usando MoviePy...")
     try:
-        # >>>>> SEU CÓDIGO DE CRIAÇÃO/EDIÇÃO DE VÍDEO COM MOVIEPY VEM AQUI <<<<<
-        # Este código vai depender muito do visual que você quer (texto na tela, imagens, clipes, etc.)
-
-        # Exemplo SIMPLES: Um clipe de cor preta com texto de cada fato, sincronizado com o áudio
-        # Você precisará de lógica mais complexa se usar imagens ou outros visuais.
-
         audio_clip = AudioFileClip(audio_path)
         total_duration = audio_clip.duration # Duração total do vídeo será a do áudio
 
-        # Criar um clipe de fundo (ex: tela preta simples)
-        # Adapte a resolução (width, height) conforme seu padrão
-        background_clip = ColorClip((1920, 1080), color=(0, 0, 0), duration=total_duration) # Exemplo: tela preta Full HD
+        # >>>>> SEU CÓDIGO DE CRIAÇÃO/EDIÇÃO DE VÍDEO COM MOVIEPY VEM AQUI <<<<<
+        # Este código é um EXEMPLO BÁSICO. Adapte-o COMPLETAMENTE ao estilo visual do seu canal.
+        # Se precisar de imagens/clipes, você precisará baixá-los/gerenciá-los antes desta função.
 
-        text_clips = []
-        current_time = 0 # Tempo de início do clipe atual
+        # Exemplo SIMPLES: Um clipe de cor preta como fundo com texto de cada fato.
+        # Adapte a resolução (width, height), cor, e FPS conforme seu padrão (ex: Full HD 1920x1080)
+        W, H = 1920, 1080 # Resolução Full HD
+        FPS = 24 # Quadros por segundo
 
-        # Simplesmente adiciona cada fato como um TextClip com a duração total do vídeo
-        # Você provavelmente vai querer dividir o áudio e sincronizar o texto com cada fato.
-        # Isso requer analisar o áudio ou ter controle sobre a narração.
-        combined_facts_text = "\n\n".join(facts) # Junta todos os fatos em um texto para este exemplo simples
+        # Cria um clipe de fundo (ex: cor sólida, ou carregue uma imagem/vídeo base aqui)
+        background_clip = ColorClip((W, H), color=(0, 0, 0), duration=total_duration) # Fundo preto
 
-        # Criar um TextClip com todos os fatos. Adapte a fonte, tamanho, cor, posição.
-        text_clip = TextClip(combined_facts_text, fontsize=40, color='white', bg_color='black',
-                             size=(1920*0.9, 1080*0.7), # Tamanho da caixa de texto
-                             method='caption', # Ajusta quebras de linha
-                             align='center') # Alinhamento do texto
+        # Exemplo de como adicionar texto. Você provavelmente vai querer que os fatos apareçam um por um,
+        # sincronizados com o áudio. Isso é mais complexo e requer dividir o áudio ou a lógica de narração.
+        # Este exemplo simplesmente junta todos os fatos em um TextClip longo.
 
-        # Definir a duração do TextClip para a duração total do áudio
-        text_clip = text_clip.set_duration(total_duration).set_position('center')
+        # Combinar fatos para um TextClip simples (adapte se quiser fatos individuais)
+        combined_facts_text = "\n\n".join(facts) # Junta fatos com 2 quebras de linha
+
+        # Cria o TextClip com o texto combinado
+        # Adapte fonte, tamanho da fonte (fontsize), cor (color), alinhamento (align), etc.
+        text_clip = TextClip(combined_facts_text,
+                             fontsize=40,
+                             color='white',
+                             bg_color='transparent', # Fundo transparente para sobrepor o background_clip
+                             size=(W*0.8, H*0.7), # Tamanho da caixa de texto (80% da largura, 70% da altura)
+                             method='caption', # Tenta ajustar quebras de linha automaticamente
+                             align='center', # Alinha o texto ao centro
+                             stroke_color='black', # Exemplo de contorno
+                             stroke_width=1) # Exemplo de largura do contorno
 
 
-        # Combina o fundo e o texto
+        # Define a duração e posição do TextClip
+        text_clip = text_clip.set_duration(total_duration).set_position('center') # Duração total, centralizado
+
+        # Combina o clipe de fundo e o TextClip. A ordem importa (fundo primeiro).
         final_video_clip = CompositeVideoClip([background_clip, text_clip])
 
-        # Define o áudio do vídeo final
+        # Define o áudio do vídeo final como o áudio gerado anteriormente
         final_video_clip = final_video_clip.set_audio(audio_clip)
 
         # --- FIM DO SEU CÓDIGO DE CRIAÇÃO/EDIÇÃO DE VÍDEO COM MOVIEPY ---
-        # Lembre-se de adicionar LOGS DENTRO DESTE PROCESSO!
+        # Lembre-se de adicionar LOGS BASTANTE DETALHADOS DENTRO DESTE PROCESSO!
+        # Ex: logging.info("MoviePy: Adicionando clipe de texto para o Fato X...")
+        # Ex: logging.info("MoviePy: Sincronizando áudio e vídeo...")
+        # Ex: logging.info("MoviePy: Iniciando a escrita do arquivo de vídeo (renderização)...")
 
-        # Salva o vídeo final em um arquivo (em uma pasta temporária)
-        output_dir = "temp_videos"
-        os.makedirs(output_dir, exist_ok=True)
-        video_output_path = os.path.join(output_dir, f"{channel_title}_video_final.mp4")
+
+        # Salva o vídeo final em um arquivo
+        # Use um nome de arquivo único, talvez baseado no timestamp
+        timestamp = int(time.time()) # Timestamp atual
+        output_dir = "generated_videos"
+        os.makedirs(output_dir, exist_ok=True) # Cria a pasta se não existir
+        video_output_filename = f"{channel_title.replace(' ', '_')}_{timestamp}_final_video.mp4"
+        video_output_path = os.path.join(output_dir, video_output_filename)
+
 
         logging.info(f"Escrevendo o arquivo de vídeo final para: {video_output_path}. Isso pode levar tempo...")
-        final_video_clip.write_videofile(video_output_path, codec='libx264', audio_codec='aac', fps=24) # Adapte FPS e codecs se necessário
+        # Use um logger de progresso se moviepy.write_videofile suportar e você configurar
+        final_video_clip.write_videofile(video_output_path,
+                                         codec='libx264', # Codec de vídeo comum
+                                         audio_codec='aac', # Codec de áudio comum
+                                         fps=FPS # Quadros por segundo definidos antes
+                                         # logger='bar' # Descomente se quiser ver uma barra de progresso no log
+                                        )
         logging.info("Arquivo de vídeo final escrito.")
 
-        return video_output_path
+        return video_output_path # Retorna o caminho do arquivo de vídeo final
 
     except Exception as e:
-        logging.error(f"ERRO durante a criação do vídeo: {e}", exc_info=True)
+        logging.error(f"ERRO durante a criação do vídeo com MoviePy: {e}", exc_info=True)
         return None
 
 # --- FUNÇÃO DE UPLOAD (manter a versão corrigida) ---
-# Adapte para o seu código de upload real se for diferente
+# Esta função recebe o caminho do arquivo de vídeo e faz o upload
 def upload_video(youtube_service, video_path, title, description, tags, category_id, privacy_status):
     logging.info(f"--- Iniciando etapa: Upload do vídeo para o YouTube ---")
     try:
+        # Verifica se o arquivo de vídeo final foi realmente criado e tem conteúdo
+        if not os.path.exists(video_path) or not os.path.getsize(video_path) > 0:
+             logging.error(f"ERRO: Arquivo de vídeo final para upload NÃO encontrado ou está vazio em: {video_path}")
+             return None # Retorna None em caso de erro
+
         logging.info(f"Preparando upload do arquivo: {video_path}")
         body= {
             'snippet': {
                 'title': title,
                 'description': description,
                 'tags': tags,
-                'categoryId': category_id # Ex: '28' para Ciência e Tecnologia. Adapte.
+                'categoryId': category_id # ID da categoria do YouTube (ex: '28' para Ciência e Tecnologia). Adapte.
             },
             'status': {
-                'privacyStatus': privacy_status # 'public', 'unlisted', ou 'private'. Adapte.
+                'privacyStatus': privacy_status # 'public', 'unlisted', ou 'private'. Comece com private para testar.
             }
         }
 
-        # Verifica se o arquivo de vídeo existe antes de tentar fazer upload
-        if not os.path.exists(video_path):
-             logging.error(f"ERRO: Arquivo de vídeo para upload NÃO encontrado: {video_path}")
-             return None # Retorna None em caso de erro
-
         # Cria o objeto MediaFileUpload para upload resumível
+        # O upload resumível é recomendado para arquivos maiores ou conexões instáveis
         media_body = MediaFileUpload(video_path, resumable=True)
 
         logging.info("Chamando youtube.videos().insert() para iniciar o upload...")
+        # Use os parâmetros 'body' e 'media_body' na chamada insert
         insert_request = youtube_service.videos().insert(
-            part=','.join(body.keys()),
-            body=body,
-            media_body=media_body
+            part=','.join(body.keys()), # Partes da requisição (snippet, status)
+            body=body, # Corpo da requisição com metadados do vídeo
+            media_body=media_body # Corpo da mídia (o arquivo de vídeo)
         )
 
-        # Execute a requisição de upload. Pode adicionar um watcher de progresso aqui se a lib permitir
+        # Execute a requisição de upload. Isso fará o upload real.
+        # Este passo pode levar bastante tempo dependendo do tamanho do vídeo e conexão.
+        # Pode adicionar um watcher de progresso aqui se a biblioteca google-api-python-client suportar callbacks.
         logging.info("Executando requisição de upload. Isso pode levar tempo...")
         response_upload = insert_request.execute() # Executa a requisição HTTP real
         logging.info("Requisição de upload executada.")
@@ -236,7 +267,7 @@ def upload_video(youtube_service, video_path, title, description, tags, category
         if video_id:
             logging.info(f"Upload completo. Vídeo ID: {video_id}")
             # O link retornado pode ser adaptado
-            logging.info(f"Link do vídeo (pode não estar ativo imediatamente): https://www.youtube.com/watch?v={video_id}")
+            logging.info(f"Link do vídeo (pode não estar ativo imediatamente): https://youtu.be/{video_id}") # Link correto do YouTube
             return video_id # Retorna o ID do vídeo se o upload for bem-sucedido
         else:
              logging.error("ERRO: Requisição de upload executada, mas a resposta não contém um ID de vídeo.", exc_info=True)
@@ -244,15 +275,16 @@ def upload_video(youtube_service, video_path, title, description, tags, category
 
 
     except FileNotFoundError:
+        # Captura o erro se o arquivo de vídeo não for encontrado para a MediaFileUpload
         logging.error(f"ERRO: Arquivo de vídeo final NÃO encontrado em {video_path} para upload.", exc_info=True)
         return None
     except Exception as e:
+        # Captura outros erros durante o processo de upload
         logging.error(f"ERRO: Falha durante o upload do vídeo: {e}", exc_info=True)
         return None
 
-    logging.info("--- Etapa concluída: Upload do vídeo para o YouTube ---")
-
-# --- FIM DA FUNÇÃO DE UPLOAD ---
+    # Note: A mensagem de sucesso final do upload já está dentro do try/except acima.
+    # Não precisamos de outra aqui a menos que haja lógica adicional pós-upload.
 
 
 # Função principal do script (manter e integrar as novas chamadas)
@@ -260,6 +292,7 @@ def main(channel_name): # Renomeado para channel_name para clareza
     logging.info(f"--- Início do script de automação para o canal: {channel_name} ---")
 
     # Define os caminhos esperados para os arquivos JSON decodificados pelo workflow
+    # Estes arquivos SÃO criados pelo step de decodificação no main.yml
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     credentials_dir = os.path.join(base_dir, 'credentials')
     config_path = os.path.join(base_dir, 'config', 'channels_config.json') # Caminho para o arquivo de configuração
@@ -268,7 +301,8 @@ def main(channel_name): # Renomeado para channel_name para clareza
     logging.info(f"Carregando configuração do canal de {config_path}...")
     channel_config = None
     try:
-        with open(config_path, 'r', encoding='utf-8') as f: # Garante leitura em UTF-8
+        # Garante leitura em UTF-8, crucial para arquivos de configuração
+        with open(config_path, 'r', encoding='utf-8') as f:
             config_data = json.load(f)
             # Encontra a configuração para o canal específico pelo nome
             for channel_data in config_data.get('channels', []):
@@ -292,28 +326,38 @@ def main(channel_name): # Renomeado para channel_name para clareza
          sys.exit(1)
 
 
-    # Define caminhos para credenciais com base na configuração do canal
-    client_secrets_base64_path = os.path.join(credentials_dir, channel_config.get('client_secret_file', ''))
-    token_base64_path = os.path.join(credentials_dir, channel_config.get('token_file', ''))
+    # Define caminhos para credenciais com base na configuração do canal carregada
+    # Estes são os nomes dos arquivos .base64 NO REPOSITÓRIO.
+    client_secrets_base64_filename = channel_config.get('client_secret_file')
+    token_base64_filename = channel_config.get('token_file')
 
-    # No workflow, decodificamos os arquivos .base64 para .json na pasta credentials
-    client_secrets_path = os.path.join(credentials_dir, 'client_secret.json')
-    token_path = os.path.join(credentials_dir, 'token.json')
+    # Verifica se os nomes dos arquivos de credenciais foram encontrados na configuração
+    if not client_secrets_base64_filename:
+        logging.error(f"ERRO CRÍTICO: 'client_secret_file' não especificado para o canal '{channel_name}' em {config_path}.")
+        sys.exit(1)
+    if not token_base64_filename:
+        logging.error(f"ERRO CRÍTICO: 'token_file' não especificado para o canal '{channel_name}' em {config_path}.")
+        sys.exit(1)
+
+    # Define os caminhos completos esperados para os arquivos JSON *decodificados*
+    # que são criados na pasta credentials/ pelo workflow.
+    client_secrets_path = os.path.join(credentials_dir, 'client_secret.json') # Assume que o workflow sempre decodifica para este nome
+    token_path = os.path.join(credentials_dir, 'token.json') # Assume que o workflow sempre decodifica para este nome
 
 
-    # Adiciona verificações para garantir que os arquivos JSON decodificados existem
+    # Adiciona verificações para garantir que os arquivos JSON decodificados existem APÓS o step de decodificação do workflow
     logging.info("Verificando arquivos de credenciais decodificados (client_secret.json e token.json) criados pelo workflow...")
     if not os.path.exists(client_secrets_path):
-         logging.error(f"ERRO CRÍTICO: Arquivo client_secret.json NÃO encontrado em {client_secrets_path} após decodificação pelo workflow. Verifique o step 'Decodificar arquivos .base64 do Repositório' no main.yml e o arquivo de entrada {channel_config.get('client_secret_file', '')}.")
+         logging.error(f"ERRO CRÍTICO: Arquivo client_secret.json NÃO encontrado em {client_secrets_path}. Verifique o step 'Decodificar arquivos .base64 do Repositório' no main.yml e o arquivo de entrada {client_secrets_base64_filename} no repositório.")
          sys.exit(1)
     if not os.path.exists(token_path):
-        logging.error(f"ERRO CRÍTICO: Arquivo token.json NÃO encontrado em {token_path} após decodificação pelo workflow. Certifique-se de que {channel_config.get('token_file', '')} existe e contém dados válidos para decodificar.")
+        logging.error(f"ERRO CRÍTICO: Arquivo token.json NÃO encontrado em {token_path}. Verifique o step 'Decodificar arquivos .base64 do Repositório' no main.yml e o arquivo de entrada {token_base64_filename} no repositório.")
         sys.exit(1)
 
     logging.info("Arquivos de credenciais decodificados encontrados em credentials/.")
 
 
-    # Obtém o serviço do YouTube autenticado passando os caminhos dos arquivos decodificados
+    # Obtém o serviço do YouTube autenticado passando os caminhos dos arquivos JSON decodificados
     logging.info("Chamando get_authenticated_service() para autenticar com token.json e client_secret.json...")
     youtube = get_authenticated_service(client_secrets_path, token_path)
     logging.info("Chamada a get_authenticated_service() concluída.")
@@ -330,67 +374,177 @@ def main(channel_name): # Renomeado para channel_name para clareza
     try:
         logging.info("--- Iniciando etapa: CRIAÇÃO DE CONTEÚDO, VÍDEO E UPLOAD ---")
 
-        # 1. Obter fatos/texto
-        logging.info("Obtendo fatos para o vídeo...")
-        # Use as keywords do canal
-        keywords = channel_config.get('keywords', '').split(',') # Obtém keywords da config
-        keywords = [k.strip() for k in keywords if k.strip()] # Limpa espaços e remove vazias
-        if not keywords:
-             logging.warning("Nenhuma keyword encontrada na configuração do canal. Gerando fatos padrão.")
+        # --- Seu código existente para interagir com a API (buscar canal, uploads, playlists) ---
+        # Este código estava no seu main() original. Mantive os logs.
+        logging.info("Iniciando operações iniciais da API do YouTube (buscar canal, uploads, etc.)...")
 
-        facts = get_facts_for_video(keywords) # Chama sua função para obter fatos
+        logging.info("Buscando informações do canal (mine=True)...")
+        request_channel = youtube.channels().list(
+            part="snippet,contentDetails,statistics",
+            mine=True
+        )
+        logging.info("Chamando youtube.channels().list().execute()...")
+        response_channel = request_channel.execute()
+        logging.info("youtube.channels().list().execute() concluído.")
+        # logging.info(f"Informações do canal: {response_channel}") # Descomente para debug detalhado da resposta
+
+
+        if not ('items' in response_channel and response_channel['items']):
+             logging.error("ERRO: Não foi possível obter informações do seu canal (mine=True). Verifique as permissões das credenciais.")
+             sys.exit(1)
+
+
+        logging.info("Buscando ID da playlist de uploads...")
+        uploads_playlist_id = response_channel['items'][0]['contentDetails']['relatedPlaylists']['uploads']
+        logging.info(f"ID da playlist de uploads encontrado: {uploads_playlist_id}")
+
+        logging.info("Buscando uploads da playlist...")
+        request_uploads = youtube.playlistItems().list(
+            part="snippet,contentDetails",
+            playlistId=uploads_playlist_id
+        )
+        logging.info("Chamando youtube.playlistItems().list().execute()...")
+        response_uploads = request_uploads.execute()
+        logging.info("youtube.playlistItems().list().execute() concluído.")
+        # logging.info(f"Uploads do canal: {response_uploads}") # Descomente para debug detalhado
+
+        if 'items' in response_uploads and response_uploads['items']:
+            logging.info(f"Encontrados {len(response_uploads['items'])} vídeos na playlist de uploads.")
+            for i, item in enumerate(response_uploads['items']):
+                video_id = item['contentDetails']['videoId']
+                video_title = item['snippet']['title']
+                logging.info(f"Processando vídeo {i+1}: ID={video_id}, Título='{video_title}'")
+        else:
+             logging.info("Nenhum vídeo encontrado na playlist de uploads.")
+
+
+        logging.info("Buscando playlists do canal (mine=True)...")
+        request_playlists = youtube.playlists().list(
+            part="snippet,contentDetails",
+            mine=True
+        )
+        logging.info("Chamando youtube.playlists().list().execute()...")
+        response_playlists = request_playlists.execute()
+        logging.info("youtube.playlists().list().execute() concluído.")
+        # logging.info(f'Playlists do canal: {response_playlists}') # Descomente para debug detalhado
+
+        logging.info("--- Etapa de operações iniciais da API concluída. ---")
+
+        # --- CRIAÇÃO DE CONTEÚDO (texto, áudio, visuais) ---
+
+        logging.info("--- Iniciando etapa: Criação de conteúdo (texto, áudio, visuais) ---")
+
+        # 1. Obter fatos/texto (chama a função que você implementará)
+        logging.info("Obtendo fatos para o vídeo...")
+        # Obtém as keywords da configuração do canal
+        keywords = channel_config.get('keywords', '').split(',')
+        keywords = [k.strip() for k in keywords if k.strip()]
+        if not keywords:
+             logging.warning("Nenhuma keyword encontrada na configuração do canal.")
+        # Chama a função placeholder (adicione sua lógica real DENTRO dela)
+        facts = get_facts_for_video(keywords) # <<< Sua lógica real para obter fatos em INGLÊS
 
         if not facts:
              logging.error("ERRO: Não foi possível gerar fatos para o vídeo. Saindo.")
              sys.exit(1)
         logging.info(f"Fatos obtidos: {facts}")
 
-        # 2. Gerar áudio a partir dos fatos
-        # Combine todos os fatos em um texto para a narração
-        audio_text = ".\n".join(facts) + "." # Junta fatos com ponto e quebra de linha
-        audio_path = generate_audio_from_text(audio_text, lang='en', output_filename=f"{channel_name}_audio.mp3")
+        # 2. Gerar áudio a partir dos fatos em inglês
+        logging.info("Gerando áudio a partir dos fatos...")
+        audio_text = ".\n".join(facts) + "." # Combina fatos em um texto
+        # Chama a função generate_audio_from_text (já implementada acima)
+        audio_path = generate_audio_from_text(audio_text, lang='en', output_filename=f"{channel_name}_audio_{int(time.time())}.mp3") # Nome de arquivo único
 
         if not audio_path:
              logging.error("ERRO: Falha ao gerar o arquivo de áudio. Saindo.")
              sys.exit(1)
         logging.info(f"Arquivo de áudio gerado: {audio_path}")
 
+        # 3. Preparar visuais (Este é um placeholder importante - você precisa baixar ou gerar imagens/vídeos)
+        logging.info("Preparando visuais para o vídeo (imagens/clipes)...")
+        # >>>>> SEU CÓDIGO PARA PREPARAR VISUAIS VEM AQUI <<<<<
+        # Se você usar imagens estáticas, baixe-as aqui.
+        # Se você usar clipes de vídeo, obtenha-os aqui.
+        # Exemplo: imagem_fundo_path = download_imagem_fundo(keywords)
+        # Exemplo: clipes_video_paths = baixar_clipes_relacionados(facts)
+        # Você precisará passar os caminhos desses arquivos para a função create_video_from_facts.
+        image_paths = [] # Exemplo: Lista de caminhos para imagens, se aplicável
+        # <<<<< FIM DO SEU CÓDIGO PARA PREPARAR VISUAIS >>>>>
+        logging.info("Preparação de visuais concluída (assumindo lógica implementada).")
 
-        # 3. Criar o vídeo a partir do áudio e fatos/visuais
-        # Aqui você chama sua lógica MoviePy. Adapte a chamada conforme sua função.
-        # O exemplo simples de create_video_from_facts está incluído acima.
-        logging.info("Chamando função para criar o vídeo final...")
-        video_output_path = create_video_from_facts(facts, audio_path, channel_title=channel_config.get('title', 'Video')) # Use título da config
+
+        logging.info("--- Etapa concluída: Criação de conteúdo (texto, áudio, visuais) ---")
+
+
+        # --- PROCESSAMENTO / EDIÇÃO DE VÍDEO ---
+
+        logging.info("--- Iniciando etapa: Processamento / Edição de vídeo ---")
+
+        # 4. Criar o vídeo a partir do áudio e visuais usando MoviePy
+        # Adapte a chamada conforme sua implementação de create_video_from_facts
+        # A função create_video_from_facts (exemplo simples) está incluída acima.
+        logging.info("Chamando função para criar o vídeo final com MoviePy...")
+        # Passe o áudio e os visuais para a função de criação de vídeo.
+        # Adapte os parâmetros conforme sua função create_video_from_facts.
+        video_output_path = create_video_from_facts(facts, audio_path, channel_title=channel_config.get('title', 'Video')) # <<< Sua lógica MoviePy dentro desta função
 
         if not video_output_path or not os.path.exists(video_output_path):
              logging.error("ERRO: Falha ao criar o arquivo de vídeo final. Saindo.")
              sys.exit(1)
         logging.info(f"Arquivo de vídeo final criado: {video_output_path}")
 
+        # 5. Gerar legendas (Opcional e Mais Avançado)
+        # logging.info("Iniciando geração de legendas (Opcional)...")
+        # >>>>> SEU CÓDIGO PARA GERAR LEGENDAS VEM AQUI (OPCIONAL) <<<<<
+        # Isso geralmente envolve usar uma API de Speech-to-Text (como Google Cloud Speech-to-Text)
+        # no arquivo de áudio gerado, e sincronizar o texto com o tempo.
+        # Ex: legenda_path = generate_subtitles(audio_path, lang='en')
+        # <<<<< FIM DO SEU CÓDIGO PARA GERAR LEGENDAS >>>>>
+        # logging.info("Geração de legendas concluída (Opcional).")
 
-        # 4. Fazer o upload do vídeo para o YouTube
-        logging.info("Preparando dados para upload...")
-        video_title = f"{channel_config.get('title', 'New Video')} - {facts[0][:50]}..." # Título do vídeo (adapte)
-        video_description = channel_config.get('description', 'An interesting video.') # Descrição do vídeo
-        video_tags = keywords # Usa as keywords como tags
-        category_id = '28' # ID da categoria do YouTube (ex: 28 para Ciência e Tecnologia). Adapte.
+
+        logging.info("--- Etapa concluída: Processamento / Edição de vídeo ---")
+
+
+        # --- UPLOAD PARA O YOUTUBE ---
+
+        # 6. Fazer o upload do vídeo para o YouTube
+        logging.info("--- Iniciando etapa: Upload do vídeo para o YouTube ---")
+        # Adapte os metadados do upload conforme a configuração do canal e o conteúdo do vídeo
+        video_title = f"{channel_config.get('title', 'New Video')} - Daily Fact #{int(time.time())}" # Exemplo de título dinâmico
+        video_description = channel_config.get('description', 'An interesting video.')
+        video_tags = keywords
+        category_id = '28' # Ex: Ciência e Tecnologia. Adapte.
         privacy_status = 'private' # private, unlisted, ou public. Comece com private para testar.
 
+        # Chama a função de upload (já implementada acima)
         logging.info("Chamando função de upload...")
         uploaded_video_id = upload_video(youtube, video_output_path, video_title, video_description, video_tags, category_id, privacy_status)
 
         if not uploaded_video_id:
-             logging.error("ERRO: O upload do vídeo falhou. Saindo.")
+             # A mensagem de erro específica já foi logada dentro de upload_video
+             logging.error("O upload do vídeo falhou.")
              sys.exit(1)
         logging.info(f"Vídeo enviado com sucesso! ID: {uploaded_video_id}")
 
+        # 7. Adicionar legendas ao vídeo (Opcional e Mais Avançado)
+        # if uploaded_video_id and legenda_path and os.path.exists(legenda_path):
+        #     logging.info(f"Adicionando legendas {legenda_path} ao vídeo {uploaded_video_id}...")
+        #     >>> SEU CÓDIGO PARA ADICIONAR LEGENDAS VIA API VEM AQUI (OPCIONAL) <<<
+        #     Isso envolve usar o método captions().insert() da API.
+        #     logging.info("Adição de legendas concluída (Opcional).")
 
-        # --- FIM DA SEGUNDA PARTE ---
+
+        logging.info("--- Etapa concluída: Upload do vídeo para o YouTube ---")
+
+
+        # --- FIM DA SEGUNDA PARTE (CRIAÇÃO/UPLOAD) ---
 
 
     except Exception as e:
-        # Captura erros inesperados que ocorram nesta segunda parte
-        logging.error(f"ERRO INESPERADO durante a criação/upload do vídeo: {e}", exc_info=True)
+        # Este bloco captura erros inesperados que ocorram em qualquer lugar
+        # dentro do bloco try principal, após a autenticação.
+        logging.error(f"ERRO INESPERADO durante a execução da automação: {e}", exc_info=True)
         sys.exit(1)
 
 

@@ -18,6 +18,7 @@ from googleapiclient.http import MediaFileUpload
 
 # Configurar logging para enviar output para o console do Actions
 # Use level=logging.INFO para ver as mensagens informativas que adicionarmos
+# stream=sys.stdout força a saída imediata para o console, útil para debug.
 logging.basicConfig(level=logging.INFO, stream=sys.stdout, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Escopos necessários para acessar a API do YouTube
@@ -27,7 +28,7 @@ SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
 # Agora espera os caminhos para os arquivos JSON *já decodificados* criados pelo workflow
 def get_authenticated_service(client_secrets_path, token_path):
     logging.info("--- Tentando obter serviço autenticado ---")
-    creds = None
+    creds = None # Inicializa credenciais como None
 
     # 1. Tenta carregar credenciais do token.json existente
     # Este arquivo foi decodificado pelo workflow a partir de canal1_token.json.base64
@@ -35,6 +36,7 @@ def get_authenticated_service(client_secrets_path, token_path):
         try:
             logging.info(f"Tentando carregar credenciais de {token_path}...")
             # Carrega as credenciais diretamente do arquivo token.json usando a biblioteca google-auth
+            # O erro 'utf-8' codec... 0xf3 acontece AQUI.
             creds = Credentials.from_authorized_user_file(token_path, SCOPES)
             logging.info("Credenciais carregadas com sucesso de token.json.")
         except Exception as e:
@@ -46,69 +48,63 @@ def get_authenticated_service(client_secrets_path, token_path):
          # Se token.json não existe, creds permanece None. O próximo bloco lida com isso.
 
 
-    # 2. Se não houver credenciais válidas, tenta atualizar usando o refresh token (se existir)
-    #    Isso acontece se o access token expirou ou se token.json foi carregado mas o token não é válido.
+    # 2. Se não houver credenciais válidas (primeira carga falhou, expirou, etc.), tenta atualizar usando o refresh token
+    #    Isso acontece se o access token expirou, ou se a carga inicial de token.json falhou mas continha info de refresh.
+    #    NOTA: A biblioteca google-auth geralmente precisa do client_secrets para realizar o refresh.
     if not creds or not creds.valid:
         logging.info("Credenciais não válidas ou não encontradas. Tentando atualizar com refresh token (se disponível)...")
 
-        if creds and creds.expired and creds.refresh_token:
-            logging.info("Credenciais existentes expiradas, tentando atualizar usando refresh token.")
-            try:
-                 # Carrega as credenciais do client_secrets.json para usar na atualização do token
-                 logging.info(f"Carregando client_secrets de {client_secrets_path} para auxiliar o refresh...")
-                 flow = InstalledAppFlow.from_client_secrets_file(client_secrets_path, SCOPES)
-                 # Define as credenciais existentes (com refresh token) no objeto flow
-                 flow.credentials = creds
-                 logging.info("Chamando flow.refresh_credentials()...")
-                 # Tenta usar o refresh token para obter um novo access token
-                 flow.refresh_credentials()
-                 creds = flow.credentials # Atualiza creds com o token de acesso recém-obtido
+        # Verifica se há um refresh token para tentar usar
+        # Se creds foi carregado parcialmente (e.g., arquivo token.json inválido), pode não ter refresh_token válido.
+        # A melhor forma é tentar carregar o flow com client_secrets e ver se ele consegue usar o token_path para refresh.
 
-                 logging.info("Token de acesso atualizado com sucesso usando refresh token.")
+        # Tenta usar InstalledAppFlow com os caminhos para client_secrets e token para gerenciar refresh
+        if os.path.exists(client_secrets_path):
+             try:
+                 logging.info(f"Carregando Flow com client_secrets de {client_secrets_path} e token de {token_path}...")
+                 # from_client_secrets_file com token=token_path tenta carregar e gerenciar o refresh
+                 # É importante que o arquivo token.json contenha 'refresh_token', 'client_id', 'client_secret', etc.
+                 flow = InstalledAppFlow.from_client_secrets_file(
+                     client_secrets_path, SCOPES,
+                     # Especifica o arquivo token.json como o local onde as credenciais autorizadas são armazenadas
+                     token=token_path
+                 )
+                 logging.info("Flow carregado. Verificando e atualizando credenciais...")
 
-                 # Salva as credenciais atualizadas de volta no token.json
-                 logging.info(f"Salvando token atualizado em {token_path}...")
-                 with open(token_path, 'w') as token_file:
-                     # Extrai os atributos necessários do objeto Credentials para salvar no JSON
-                     token_data = {
-                         'token': creds.token,
-                         'refresh_token': creds.refresh_token,
-                         'token_uri': creds.token_uri,
-                         'client_id': creds.client_id,
-                         'client_secret': creds.client_secret,
-                         'scopes': creds.scopes,
-                         'expiry': creds.expiry.isoformat() if creds.expiry else None # Incluir data de expiração
-                     }
-                     json.dump(token_data, token_file, indent=4)
-                 logging.info(f"Arquivo {token_path} atualizado com sucesso.")
+                 # A linha abaixo tentará carregar de token_path, verificar validade e refreshar se necessário
+                 # Como run_local_server foi removido, ele não tentará abrir um browser se o refresh falhar.
+                 # Ele simplesmente não retornará credenciais válidas.
+                 flow.run_console() # run_console() tenta carregar/refreshar sem servidor local
+                 creds = flow.credentials # Pega as credenciais (atualizadas ou não) do flow
 
-            except FileNotFoundError:
+                 if creds and creds.valid:
+                     logging.info("Credenciais validadas/atualizadas via flow.run_console().")
+                     # Se o refresh ocorreu, o run_console já salva automaticamente o token atualizado em token_path.
+                     # Não precisamos salvar manualmente aqui novamente.
+                     logging.info(f"Arquivo {token_path} deve estar atualizado agora pelo flow.")
+                 else:
+                     logging.warning("Credenciais não válidas após tentativa com flow.run_console().")
+
+
+             except FileNotFoundError:
                  # Este erro não deveria acontecer se o workflow criou client_secrets.json
-                 logging.error(f"ERRO: Arquivo client_secrets.json NÃO encontrado em {client_secrets_path}. Necessário para refresh do token.", exc_info=True)
+                 logging.error(f"ERRO: Arquivo client_secrets.json NÃO encontrado em {client_secrets_path}. Necessário para autenticação/refresh.", exc_info=True)
                  creds = None # Falha crítica
-            except Exception as e:
-                # Captura erros durante o processo de refresh
-                logging.error(f"ERRO: Falha ao atualizar token de acesso com refresh token: {e}", exc_info=True)
-                creds = None # A atualização falhou, credenciais não são válidas
-
-        elif creds and not creds.refresh_token:
-            logging.error("ERRO: Credenciais existentes expiradas, mas SEM refresh token disponível em token.json. Não é possível re-autorizar automaticamente.")
-            # Neste ponto, no ambiente headless, não há como prosseguir.
-            return None # Indica falha crítica na autenticação
+             except Exception as e:
+                # Captura erros durante o processo de refresh via flow
+                logging.error(f"ERRO: Falha durante a tentativa de autenticação/refresh via flow: {e}", exc_info=True)
+                # O erro 'utf-8' codec 0xf3 PODE acontecer aqui também se o token.json lido pelo flow estiver corrompido.
+                creds = None # A tentativa falhou, credenciais não são válidas
 
         else:
-             # Caso onde token.json não existe, estava vazio/corrompido, ou não continha refresh token válido.
-             logging.warning("Não foi possível carregar credenciais de token.json E não há refresh token disponível ou válido.")
-             # --- PONTO CRÍTICO EM AUTOMAÇÃO HEADLESS ---
-             # REMOVEMOS run_local_server AQUI. Se chegamos neste ponto, significa que
-             # o token.json não existia ou estava inválido/sem refresh token válido para o refresh automático.
-             # No ambiente de automação, a única forma de resolver é via re-autenticação manual LOCALMENTE.
-             logging.error("ERRO CRÍTICO: Necessário executar a autenticação inicial LOCALMENTE (com generate_token.py) para criar/atualizar um token.json válido com refresh token, e garantir que o arquivo canal1_token.json.base64 no repositório contenha este token codificado CORRETAMENTE.")
+             # Este erro não deveria acontecer se o workflow criou client_secrets.json
+             logging.error(f"ERRO CRÍTICO: Arquivo client_secrets.json NÃO encontrado em {client_secrets_path}. Autenticação impossível.", exc_info=True)
              return None # Indica falha crítica na autenticação
 
 
     # 3. Verifica se ao final do processo temos credenciais válidas
     if not creds or not creds.valid:
+         # Este log é atingido se todas as tentativas falharam
          logging.error("--- Falha crítica final ao obter credenciais válidas após todas as tentativas. Saindo. ---")
          return None # Indica falha total na autenticação
 
@@ -130,7 +126,7 @@ def main(channel):
     logging.info(f"--- Início do script de automação para o canal: {channel} ---")
 
     # Define os caminhos esperados para os arquivos JSON decodificados pelo workflow
-    # Estes arquivos SÃO criados pelo step de decodificação no main.yml a partir dos seus arquivos .base64 no repositório
+    # Estes arquivos SÃO criados pelo step de decodificação no main.yml
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     credentials_dir = os.path.join(base_dir, 'credentials')
     client_secrets_path = os.path.join(credentials_dir, 'client_secret.json')
@@ -138,25 +134,26 @@ def main(channel):
 
     # Adiciona verificações para garantir que os arquivos JSON decodificados existem
     # Estas verificações devem passar se o step de decodificação no main.yml for bem-sucedido
-    logging.info("Verificando arquivos de credenciais decodificados (client_secret.json e token.json)...")
+    logging.info("Verificando arquivos de credenciais decodificados (client_secret.json e token.json) criados pelo workflow...")
     if not os.path.exists(client_secrets_path):
-         logging.error(f"ERRO CRÍTICO: Arquivo client_secret.json NÃO encontrado em {client_secrets_path} após decodificação pelo workflow. Verifique o step de decodificação no main.yml e o arquivo de entrada canal1_client_secret.json.base64.")
+         logging.error(f"ERRO CRÍTICO: Arquivo client_secret.json NÃO encontrado em {client_secrets_path}. Verifique o step 'Decodificar arquivos .base64 do Repositório' no main.yml e o arquivo de entrada canal1_client_secret.json.base64.")
          sys.exit(1) # Sai se client_secret.json não foi criado
     # Verifica a existência de token.json. get_authenticated_service lida com o conteúdo inválido.
     if not os.path.exists(token_path):
-        logging.error(f"ERRO CRÍTICO: Arquivo token.json NÃO encontrado em {token_path} após decodificação pelo workflow. Certifique-se de que canal1_token.json.base64 existe e contém dados válidos para decodificar.")
+        logging.error(f"ERRO CRÍTICO: Arquivo token.json NÃO encontrado em {token_path}. Verifique o step 'Decodificar arquivos .base64 do Repositório' no main.yml e o arquivo de entrada canal1_token.json.base64.")
         sys.exit(1) # Sai se token.json não foi criado
 
     logging.info("Arquivos de credenciais decodificados encontrados em credentials/.")
 
 
     # Obtém o serviço do YouTube autenticado passando os caminhos dos arquivos decodificados
-    logging.info("Chamando get_authenticated_service()...")
+    logging.info("Chamando get_authenticated_service() para autenticar com token.json e client_secret.json...")
     youtube = get_authenticated_service(client_secrets_path, token_path)
-    logging.info("get_authenticated_service() concluído.")
+    logging.info("Chamada a get_authenticated_service() concluída.")
 
     # Verifica se a autenticação foi bem-sucedida (se get_authenticated_service retornou um objeto build)
     if youtube is None:
+        # A mensagem de erro específica já foi logada dentro de get_authenticated_service
         logging.error("Falha final na autenticação do serviço YouTube. Saindo do script.")
         sys.exit(1) # Sai se get_authenticated_service retornou None
 
@@ -166,7 +163,7 @@ def main(channel):
     # Mova seus processos de criação de vídeo e upload para DENTRO deste bloco try...except.
 
     try:
-        logging.info("--- Iniciando etapa: Operações da API do YouTube (buscar canal, uploads, etc.) ---")
+        logging.info("--- Iniciando etapa: Operações iniciais da API do YouTube (buscar canal, uploads, etc.) ---")
 
         # --- Seu código existente para interagir com a API (buscar canal, uploads, playlists) ---
         # Ex: youtube.channels().list(...).execute()
@@ -179,7 +176,7 @@ def main(channel):
             part="snippet,contentDetails,statistics",
             mine=True
         )
-        # Adicione log ANTES de cada chamada .execute()
+        # Adicione log ANTES de cada chamada .execute() pois elas fazem a requisição de rede real
         logging.info("Chamando youtube.channels().list().execute()...")
         response_channel = request_channel.execute()
         logging.info("youtube.channels().list().execute() concluído.")
@@ -283,34 +280,44 @@ def main(channel):
                  logging.error(f"ERRO: Arquivo de vídeo para upload NÃO encontrado: {video_file_path}")
                  sys.exit(1) # Sai se o arquivo de vídeo não existe
 
+            # Cria o objeto MediaFileUpload
             media_body = MediaFileUpload(video_file_path, resumable=True)
 
             logging.info("Chamando youtube.videos().insert() para iniciar o upload...")
-            # Use os parâmetros 'body' e 'media_body' na chamada insert
+            # Usa o método insert() da API videos()
             insert_request = youtube.videos().insert(
-                part=','.join(body.keys()),
-                body=body,
-                media_body=media_body
+                part=','.join(body.keys()), # Partes da requisição (snippet, status)
+                body=body, # Corpo da requisição com metadados do vídeo
+                media_body=media_body # Corpo da mídia (o arquivo de vídeo)
             )
 
             # Execute a requisição de upload. Isso fará o upload real.
-            # Pode adicionar um watcher de progresso aqui se a biblioteca permitir.
-            logging.info("Executando requisição de upload. Isso pode levar tempo dependendo do tamanho do vídeo e conexão...")
-            response_upload = insert_request.execute()
+            # Este passo pode levar bastante tempo dependendo do tamanho do vídeo e da conexão.
+            # Pode adicionar um watcher de progresso aqui se a biblioteca google-api-python-client suportar callbacks.
+            logging.info("Executando requisição de upload. Isso pode levar tempo...")
+            response_upload = insert_request.execute() # Executa a requisição HTTP real
             logging.info("Requisição de upload executada.")
 
-            logging.info(f"Upload completo. Vídeo ID: {response_upload.get('id')}")
-            # O link retornado pode ser adaptado
-            logging.info(f"Link do vídeo (pode não estar ativo imediatamente): https://www.youtube.com/watch?v={response_upload.get('id')}")
+            # Verifica a resposta do upload
+            video_id = response_upload.get('id')
+            if video_id:
+                logging.info(f"Upload completo. Vídeo ID: {video_id}")
+                # O link retornado pode ser adaptado
+                logging.info(f"Link do vídeo (pode não estar ativo imediatamente): http://youtube.com/watch?v={video_id}")
+            else:
+                 logging.error("ERRO: Requisição de upload executada, mas a resposta não contém um ID de vídeo.", exc_info=True)
+                 # Considere sair com erro aqui se o upload não retornar um ID
+                 # sys.exit(1)
+
 
         except FileNotFoundError:
             # Captura o erro se o arquivo de vídeo não for encontrado para a MediaFileUpload
             logging.error(f"ERRO: Arquivo de vídeo final NÃO encontrado em {video_file_path} para upload.", exc_info=True)
-            sys.exit(1)
+            sys.exit(1) # Sai com erro se o arquivo de vídeo não existe
         except Exception as e:
             # Captura outros erros durante o processo de upload
             logging.error(f"ERRO: Falha durante o upload do vídeo: {e}", exc_info=True)
-            sys.exit(1)
+            sys.exit(1) # Sai com erro em caso de falha no upload
 
         logging.info("--- Etapa concluída: Upload do vídeo para o YouTube ---")
 
@@ -321,7 +328,7 @@ def main(channel):
     except Exception as e:
         # Este bloco captura erros inesperados que ocorram em qualquer lugar
         # dentro do bloco try principal, após a autenticação.
-        logging.error(f"ERRO INESPERADO no script principal (fora das etapas conhecidas): {e}", exc_info=True) # Imprime o traceback
+        logging.error(f"ERRO INESPERADO no script principal (fora das etapas conhecidas): {e}", exc_info=True) # Imprime o traceback completo
         sys.exit(1) # Garante que o workflow falhe se ocorrer um erro inesperado
 
     logging.info("--- Script de automação finalizado com sucesso ---")
@@ -330,6 +337,8 @@ def main(channel):
 # Configuração do parser de argumentos (manter)
 # Isso permite que o script receba o nome do canal como argumento do workflow
 if __name__ == "__main__":
+    # Adiciona um log para indicar o início da execução principal do script
+    logging.info("Script main.py iniciado via __main__.")
     parser = argparse.ArgumentParser(description="Automatiza o YouTube.")
     # O argumento --channel "fizzquirk" é passado pelo main.yml
     parser.add_argument("--channel", required=True, help="Nome do canal a ser automatizado.")

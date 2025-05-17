@@ -33,7 +33,7 @@ logging.basicConfig(level=logging.INFO, stream=sys.stdout, format='%(asctime)s -
 # Escopos necessários para acessar a API do YouTube (upload)
 SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
 
-# Função para obter o serviço autenticado
+# Função para obter o serviço autenticado (manter a versão corrigida)
 # Esta função lida com a carga do token.json e refresh automático.
 # Espera os caminhos para os arquivos JSON *já decodificados* criados pelo workflow
 def get_authenticated_service(client_secrets_path, token_path):
@@ -142,7 +142,7 @@ def get_facts_for_video(keywords, num_facts=5):
     # Use as keywords como base para buscar fatos (ex: APIs externas, scraping - CUIDADO!, lista predefinida).
     # Esta é uma implementação BÁSICA e ESTÁTICA com alguns exemplos. SUBSTITUA PELA SUA LÓGICA REAL.
     # Certifique-se de que o texto obtido está formatado corretamente para Text-to-Speech e exibição.
-    
+
     # Exemplo Simples Estático (Substitua pela sua lógica real que gera/busca fatos em INGLÊS):
     facts = [
         "Did you know that a group of owls is called a parliament? It's a wise gathering!",
@@ -235,8 +235,8 @@ def create_video_from_content(facts, audio_path, channel_title="Video"):
                                     bg_color='transparent', # Fundo transparente
                                     size=(W*0.8, None), # Largura da caixa de texto, altura automática
                                     method='caption',
-                                    align='center',
-                                    stroke_color='black',
+                                    align='center', # Alinha o texto ao centro
+                                    stroke_color='black', # Exemplo de contorno
                                     stroke_width=1)
 
             # Define a duração e a posição do clipe de texto do fato
@@ -267,10 +267,8 @@ def create_video_from_content(facts, audio_path, channel_title="Video"):
         # Lembre-se de adicionar LOGS BASTANTE DETALHADOS DENTRO DESTE PROCESSO!
         # Ex: logging.info("MoviePy: Carregando clip de áudio...")
         # Ex: logging.info("MoviePy: Sincronizando clipes...")
-        # Ex: logging.info(f"MoviePy: Criando TextClip para o fato '{fact[:20]}...'")
         # Ex: logging.info("MoviePy: Iniciando a escrita do arquivo de vídeo (renderização)...")
         # Ex: logging.info(f"MoviePy: Renderizando quadro {i}/{total_quadros}...") # Se puder adicionar um loop de progresso
-
 
         # Salva o vídeo final em um arquivo
         # Use um nome de arquivo único, talvez baseado no timestamp, e em uma pasta de saída
@@ -284,7 +282,7 @@ def create_video_from_content(facts, audio_path, channel_title="Video"):
         logging.info(f"Escrevendo o arquivo de vídeo final para: {video_output_path}. Isso pode levar tempo...")
         # Use um logger de progresso se moviepy.write_videofile suportar e você configurar
         final_video_clip.write_videofile(video_output_path,
-                                         codec='libx264', # Codec de vídeo comum e recomendado para MP4
+                                         codec='libx264', # Codec de vídeo comum e recomendado
                                          audio_codec='aac', # Codec de áudio comum e recomendado
                                          fps=FPS, # Quadros por segundo definidos antes
                                          threads=4 # Pode ajustar o número de threads para renderização
@@ -295,7 +293,6 @@ def create_video_from_content(facts, audio_path, channel_title="Video"):
         return video_output_path # Retorna o caminho do arquivo de vídeo final
 
     except Exception as e:
-        # Captura erros durante a criação do vídeo (MoviePy, etc.)
         logging.error(f"ERRO durante a criação do vídeo com MoviePy: {e}", exc_info=True)
         return None
 
@@ -353,7 +350,7 @@ def upload_video(youtube_service, video_path, title, description, tags, category
         if video_id:
             logging.info(f"Upload completo. Vídeo ID: {video_id}")
             # Construa o link correto do YouTube
-            logging.info(f"Link do vídeo (pode não estar ativo imediatamente se for privado): https://www.youtube.com/watch?v={video_id}")
+            logging.info(f"Link do vídeo (pode não estar ativo imediatamente se for privado): https://youtu.be/{video_id}") # Link correto do YouTube
             return video_id # Retorna o ID do vídeo se o upload for bem-sucedido
         else:
              logging.error("ERRO: Requisição de upload executada, mas a resposta não contém um ID de vídeo.", exc_info=True)
@@ -375,7 +372,7 @@ def upload_video(youtube_service, video_path, title, description, tags, category
 
 # Função principal do script
 # Esta função coordena as etapas da automação para um canal específico
-def main(channel_name):
+def main(channel_name): # Renomeado para channel_name para clareza
     logging.info(f"--- Início do script de automação para o canal: {channel_name} ---")
 
     # Define os caminhos esperados para os arquivos JSON decodificados pelo workflow
@@ -563,97 +560,4 @@ def main(channel_name):
         logging.info("Preparação de visuais concluída (assumindo lógica implementada).")
 
 
-        logging.info("--- Etapa concluída: Criação de conteúdo (texto, áudio, visuais) ---")
-
-
-        # --- PROCESSAMENTO / EDIÇÃO DE VÍDEO ---
-
-        logging.info("--- Iniciando etapa: Processamento / Edição de vídeo ---")
-
-        # 4. Criar o vídeo a partir do áudio e visuais usando MoviePy
-        # Chama a função que você implementará (create_video_from_content)
-        # Adapte a chamada conforme sua implementação de create_video_from_content
-        # A função create_video_from_content (exemplo simples) está incluída acima.
-        logging.info("Chamando função para criar o vídeo final com MoviePy...")
-        # Passe os fatos, o áudio e os caminhos dos visuais (imagens/clipes) para esta função.
-        # Exemplo: video_output_path = create_video_from_content(facts, audio_path, image_paths, video_clip_paths, channel_title=channel_config.get('title', 'Video'))
-        video_output_path = create_video_from_content(facts, audio_path, channel_title=channel_config.get('title', 'Video')) # <<< Sua lógica MoviePy dentro desta função
-
-        if not video_output_path or not os.path.exists(video_output_path) or os.path.getsize(video_output_path) == 0:
-             logging.error("ERRO: Falha ao criar o arquivo de vídeo final ou o arquivo está vazio. Saindo.")
-             sys.exit(1) # Sai se o arquivo de vídeo não foi criado ou está vazio
-        logging.info(f"Arquivo de vídeo final criado: {video_output_path}")
-
-        # 5. Gerar legendas (Opcional e Mais Avançado) - Se quiser isso agora, precisa implementar.
-        # logging.info("Iniciando geração de legendas (Opcional)...")
-        # >>>>> SEU CÓDIGO PARA GERAR LEGENDAS VEM AQUI (OPCIONAL) <<<<<
-        # Use uma API de Speech-to-Text (como Google Cloud Speech-to-Text)
-        # no arquivo de áudio gerado, e sincronizar o texto com o tempo.
-        # Ex: legenda_path = generate_subtitles(audio_path, lang='en')
-        # if legenda_path and os.path.exists(legenda_path):
-        #      logging.info(f"Arquivo de legendas gerado: {legenda_path}")
-        # else:
-        #      logging.warning("Geração de legendas falhou ou não foi implementada.")
-        # <<<<< FIM DO SEU CÓDIGO PARA GERAR LEGENDAS >>>>>
-        # logging.info("Geração de legendas concluída (Opcional).")
-
-
-        logging.info("--- Etapa concluída: Processamento / Edição de vídeo ---")
-
-
-        # --- UPLOAD PARA O YOUTUBE ---
-
-        # 6. Fazer o upload do vídeo para o YouTube
-        logging.info("--- Iniciando etapa: Upload do vídeo para o YouTube ---")
-        # Adapte os metadados do upload conforme a configuração do canal e o conteúdo do vídeo
-        video_title = f"{channel_config.get('title', 'New Video')} - Daily Fact #{int(time.time())}" # Exemplo de título dinâmico com timestamp
-        video_description = channel_config.get('description', 'An interesting video.')
-        video_tags = keywords
-        category_id = '28' # Ex: Ciência e Tecnologia. Adapte. Lista de IDs: https://developers.google.com/youtube/v3/docs/videos#snippet.categoryId
-        privacy_status = 'private' # private, unlisted, ou public. Comece com 'private' para testar!
-
-        # Chama a função de upload (já implementada acima)
-        logging.info("Chamando função de upload...")
-        uploaded_video_id = upload_video(youtube, video_output_path, video_title, video_description, video_tags, category_id, privacy_status)
-
-        if not uploaded_video_id:
-             # A mensagem de erro específica já foi logada dentro de upload_video
-             logging.error("O upload do vídeo falhou.")
-             sys.exit(1) # Sai com erro se o upload falhou
-        logging.info(f"Vídeo enviado com sucesso! ID: {uploaded_video_id}")
-
-        # 7. Adicionar legendas ao vídeo (Opcional e Mais Avançado)
-        # Se você gerou um arquivo de legendas no passo 5 e o upload foi bem-sucedido, pode adicioná-lo aqui.
-        # if uploaded_video_id and 'legenda_path' in locals() and legenda_path and os.path.exists(legenda_path):
-        #     logging.info(f"Adicionando legendas {legenda_path} ao vídeo {uploaded_video_id}...")
-        #     >>> SEU CÓDIGO PARA ADICIONAR LEGENDAS VIA API VEM AQUI (OPCIONAL) <<<
-        #     Isso envolve usar o método captions().insert() da API do YouTube Data API v3.
-        #     logging.info("Adição de legendas concluída (Opcional).")
-
-
-        logging.info("--- Etapa concluída: Upload do vídeo para o YouTube ---")
-
-
-        # --- FIM DA SEGUNDA PARTE (CRIAÇÃO/UPLOAD) ---
-
-
-    except Exception as e:
-        # Este bloco captura erros inesperados que ocorram em qualquer lugar
-        # dentro do bloco try principal, após a autenticação.
-        logging.error(f"ERRO INESPERADO durante a execução da automação: {e}", exc_info=True)
-        sys.exit(1)
-
-
-    logging.info("--- Script de automação finalizado com sucesso ---")
-
-
-# Configuração do parser de argumentos (manter)
-# Esta função coordena as etapas da automação para um canal específico
-if __name__ == "__main__":
-    logging.info("Script main.py iniciado via __main__.")
-    parser = argparse.ArgumentParser(description="Automatiza o YouTube.")
-    # O argumento --channel é passado pelo main.yml com o nome do canal (ex: "fizzquirk")
-    parser.add_argument("--channel", required=True, help="Nome do canal a ser automatizado (conforme channels_config.json).")
-    args = parser.parse_args()
-    # Chama a função main passando o nome do canal
-    main(args.channel)
+        logging.info("--- Etapa concluída: Criação de conteúdo (texto, audio

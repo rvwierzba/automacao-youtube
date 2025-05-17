@@ -10,22 +10,23 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.http import MediaFileUpload
 
-# --- Importações Adicionais Necessárias para a Parte 2 ---
+# --- Importações Adicionais Necessárias para a Criação de Conteúdo/Vídeo ---
 # Para gerar áudio a partir de texto
 from gtts import gTTS
 # Para processamento e edição de vídeo
+# Importe as classes específicas que você vai usar do MoviePy
 from moviepy.editor import AudioFileClip, ImageClip, concatenate_videoclips, TextClip, CompositeVideoClip, ColorClip, vfx, VideoFileClip
 # Pode precisar de Pillow para TextClip/ImageClip
-from PIL import Image # Importar Pillow/PIL - Certifique-se de ter 'Pillow' no seu requirements.txt
+# Certifique-se de ter 'Pillow' no seu requirements.txt
+from PIL import Image # Importar Pillow/PIL
 
 
-# Configurar logging para enviar output para o console do Actions
-# DEBUG: Mensagens muito detalhadas (descomentar em caso de debug profundo)
-# INFO: Mensagens informativas sobre o progresso (nível padrão)
-# WARNING: Avisos
-# ERROR: Erros que causam falha na etapa
-# CRITICAL: Erros que causam falha no script
+# Configurar logging para enviar output para o console do GitHub Actions
+# Use level=logging.INFO para ver as mensagens informativas sobre o progresso.
+# Descomente a linha abaixo para DEBUG mais detalhado (mostrará mensagens debug)
+# logging.basicConfig(level=logging.DEBUG, stream=sys.stdout, format='%(asctime)s - %(levelname)s - %(message)s')
 logging.basicConfig(level=logging.INFO, stream=sys.stdout, format='%(asctime)s - %(levelname)s - %(message)s')
+
 
 # Escopos necessários para acessar a API do YouTube (upload)
 SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
@@ -135,13 +136,14 @@ def get_facts_for_video(keywords, num_facts=5):
     logging.info(f"--- Obtendo fatos para o vídeo (Língua: Inglês) ---")
     logging.info(f"Keywords fornecidas: {keywords}")
     # >>>>> SEU CÓDIGO PARA OBTER FATOS REAIS EM INGLÊS VEM AQUI <<<<<
-    # Use as keywords como base para buscar fatos (ex: APIs, scraping - CUIDADO!, lista predefinida).
+    # Use as keywords como base para buscar fatos (ex: APIs externas, scraping - CUIDADO!, lista predefinida).
     # Esta é uma implementação BÁSICA e ESTÁTICA. SUBSTITUA PELA SUA LÓGICA REAL.
+    # Certifique-se de que o texto obtido está formatado corretamente para Text-to-Speech e exibição.
     
-    # Exemplo Simples Estático (Substitua pela sua lógica real que gera fatos em INGLÊS):
+    # Exemplo Simples Estático (Substitua pela sua lógica real que gera/busca fatos em INGLÊS):
     facts = [
         "Did you know that a group of owls is called a parliament? It's a wise gathering!",
-        "Honey never spoils. Imagine eating honey from a pharaoh's tomb!",
+        "Honey never spoils. Archaeologists have even found pots of honey in ancient Egyptian tombs that are over 3,000 years old and still edible!",
         "The shortest war in history lasted only 38 to 45 minutes between Britain and Zanzibar on August 27, 1896.",
         "A cloud can weigh over a million pounds. That's heavier than some small planes!",
         "If you could harness the energy of a lightning bolt, you could toast 100,000 slices of bread.",
@@ -163,7 +165,7 @@ def generate_audio_from_text(text, lang='en', output_filename="audio.mp3"):
     try:
         # Define o caminho de saída dentro de uma pasta temporária para áudios
         output_dir = "temp_audio"
-        os.makedirs(output_dir, exist_ok=True) # Cria a pasta temp_audio se não existir
+        os.makedirs(output_dir, exist_ok=True) # Cria la carpeta temp_audio si no existe
         audio_path = os.path.join(output_dir, output_filename)
 
         tts = gTTS(text=text, lang=lang, slow=False) # lang='en' para inglês
@@ -244,7 +246,7 @@ def create_video_from_content(facts, audio_path, channel_title="Video"):
         # Use um nome de arquivo único, talvez baseado no timestamp, e em uma pasta de saída
         timestamp = int(time.time()) # Timestamp atual para nome único
         output_video_dir = "generated_videos"
-        os.makedirs(output_video_dir, exist_ok=True) # Cria a pasta se não existir
+        os.makedirs(output_video_dir, exist_ok=True) # Cria la carpeta si no existe
         video_output_filename = f"{channel_title.replace(' ', '_').lower()}_{timestamp}_final.mp4"
         video_output_path = os.path.join(output_video_dir, video_output_filename)
 
@@ -277,7 +279,7 @@ def upload_video(youtube_service, video_path, title, description, tags, category
              return None # Retorna None em caso de erro
 
         logging.info(f"Preparando upload do arquivo: {video_path}")
-        # Define os metadados do upload (título, descrição, tags, categoria, status de privacidade)
+        # Define os metadados do vídeo (título, descrição, tags, categoria, status de privacidade)
         body= {
             'snippet': {
                 'title': title,
@@ -428,7 +430,7 @@ def main(channel_name): # Renomeado para channel_name para clareza
 
         # --- Seu código existente para interagir com a API (buscar canal, uploads, playlists) ---
         # Este código estava no seu main() original. Mantive os logs e a estrutura.
-        logging.info("Iniciando operações iniciais da API do YouTube (buscar canal, uploads, etc.)...")
+        logging.info("Iniciando operações iniciais da API do YouTube (buscar canal, uploads, playlists)...")
 
         logging.info("Buscando informações do canal (mine=True)...")
         request_channel = youtube.channels().list(
@@ -535,8 +537,7 @@ def main(channel_name): # Renomeado para channel_name para clareza
 
         # 4. Criar o vídeo a partir do áudio e visuais usando MoviePy
         # Chama a função que você implementará (create_video_from_content)
-        # Adapte a chamada conforme sua implementação de create_video_from_content
-        # A função create_video_from_content (exemplo simples) está incluída acima.
+        # Adapte a chamada e os parâmetros conforme sua função necessitar.
         logging.info("Chamando função para criar o vídeo final com MoviePy...")
         # Passe os fatos, o áudio e os caminhos dos visuais (imagens/clipes) para esta função.
         # Exemplo: video_output_path = create_video_from_content(facts, audio_path, image_paths, video_clip_paths, channel_title=channel_config.get('title', 'Video'))

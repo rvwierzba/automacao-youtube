@@ -20,98 +20,130 @@ from PIL import Image # Importar Pillow/PIL - Certifique-se de ter 'Pillow' no s
 
 
 # Configurar logging para enviar output para o console do Actions
+# DEBUG: Mensagens muito detalhadas (descomentar em caso de debug profundo)
+# INFO: Mensagens informativas sobre o progresso (nível padrão)
+# WARNING: Avisos
+# ERROR: Erros que causam falha na etapa
+# CRITICAL: Erros que causam falha no script
 logging.basicConfig(level=logging.INFO, stream=sys.stdout, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Escopos necessários (manter)
+# Escopos necessários para acessar a API do YouTube (upload)
 SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
 
 # Função para obter o serviço autenticado (manter a versão corrigida)
+# Esta função lida com a carga do token.json e refresh automático.
 def get_authenticated_service(client_secrets_path, token_path):
     logging.info("--- Tentando obter serviço autenticado ---")
-    creds = None
+    creds = None # Inicializa credenciais como None
 
+    # 1. Tenta carregar credenciais do token.json existente (decodificado pelo workflow)
+    # Este arquivo foi decodificado pelo workflow a partir de canal1_token.json.base64
     if os.path.exists(token_path):
         try:
             logging.info(f"Tentando carregar credenciais de {token_path} usando from_authorized_user_file...")
+            # Use from_authorized_user_file para carregar credenciais do token.json
+            # Esta função lida automaticamente com a estrutura do token.json
             creds = Credentials.from_authorized_user_file(token_path, SCOPES)
             logging.info("Credenciais carregadas com sucesso de token.json.")
         except Exception as e:
-            logging.warning(f"Não foi possível carregar credenciais de {token_path}: {e}", exc_info=True)
-            creds = None
+            # Logar aviso se o arquivo token.json estiver inválido/corrompido (como o erro 0xf3, AGORA RESOLVIDO!)
+            # Ou outros erros de parsing.
+            logging.warning(f"Não foi possível carregar credenciais de {token_path}: {e}", exc_info=True) # Logar traceback para entender o erro de parsing
+            creds = None # Garantir que creds seja None se a carga falhar
+    else:
+         logging.warning(f"Arquivo token.json NÃO encontrado em {token_path}.")
+         # Se token.json não existe, creds permanece None. O próximo bloco lida com isso.
 
+
+    # 2. Se as credenciais foram carregadas mas estão expiradas, tenta refreshar
     if creds and creds.expired and creds.refresh_token:
         logging.info("Credenciais expiradas, tentando atualizar usando refresh token.")
         try:
-            # Use InstalledAppFlow para carregar client_secrets e configurar o refresh
-            logging.info(f"Carregando client_secrets de {client_secrets_path} para auxiliar o refresh...")
-            flow = InstalledAppFlow.from_client_secrets_file(client_secrets_path, SCOPES)
-            # Define as credenciais existentes (com refresh token) no objeto flow
-            flow.credentials = creds
-            logging.info("Chamando flow.refresh_credentials()...")
-            flow.refresh_credentials()
-            creds = flow.credentials
-            logging.info("Token de acesso atualizado com sucesso usando refresh token.")
+             # Use InstalledAppFlow para carregar client_secrets e configurar o refresh
+             # É importante carregar o client_secrets aqui para que o objeto creds saiba seu client_id/secret para o refresh.
+             logging.info(f"Carregando client_secrets de {client_secrets_path} para auxiliar o refresh...")
+             flow = InstalledAppFlow.from_client_secrets_file(client_secrets_path, SCOPES)
+             # Define as credenciais existentes (com refresh token) no objeto flow
+             flow.credentials = creds
+             logging.info("Chamando flow.refresh_credentials()...")
+             # Tenta usar o refresh token para obter um novo access token. Esta chamada é NÃO INTERATIVA.
+             flow.refresh_credentials()
+             creds = flow.credentials # Atualiza creds com o token de acesso recém-obtido
+             logging.info("Token de acesso atualizado com sucesso usando refresh token.")
 
-            logging.info(f"Salvando token atualizado em {token_path}...")
-            with open(token_path, 'w') as token_file:
-                token_data = {
-                    'token': creds.token,
-                    'refresh_token': creds.refresh_token,
-                    'token_uri': creds.token_uri,
-                    'client_id': creds.client_id,
-                    'client_secret': creds.client_secret,
-                    'scopes': creds.scopes,
-                    'expiry': creds.expiry.isoformat() if creds.expiry else None
-                }
-                json.dump(token_data, token_file, indent=4)
-            logging.info(f"Arquivo {token_path} atualizado com sucesso.")
+             # Salva as credenciais atualizadas de volta no token.json
+             logging.info(f"Salvando token atualizado em {token_path}...")
+             with open(token_path, 'w') as token_file:
+                 # Extrai os atributos necessários do objeto Credentials para salvar no JSON
+                 token_data = {
+                     'token': creds.token,
+                     'refresh_token': creds.refresh_token,
+                     'token_uri': creds.token_uri,
+                     'client_id': creds.client_id,
+                     'client_secret': creds.client_secret,
+                     'scopes': creds.scopes,
+                     'expiry': creds.expiry.isoformat() if creds.expiry else None # Incluir data de expiração
+                 }
+                 json.dump(token_data, token_file, indent=4)
+             logging.info(f"Arquivo {token_path} atualizado com sucesso.")
 
         except FileNotFoundError:
+             # Este erro não deveria acontecer se o workflow criou client_secrets.json
              logging.error(f"ERRO: Arquivo client_secrets.json NÃO encontrado em {client_secrets_path}. Necessário para refresh do token.", exc_info=True)
-             creds = None
+             creds = None # Falha crítica
         except Exception as e:
+            # Captura erros durante o processo de refresh
             logging.error(f"ERRO: Falha ao atualizar token de acesso com refresh token: {e}", exc_info=True)
-            creds = None
+            creds = None # A atualização falhou, credenciais não são válidas
 
     elif creds and not creds.refresh_token:
         logging.error("ERRO: Credenciais existentes expiradas, mas SEM refresh token disponível em token.json. Não é possível re-autorizar automaticamente.")
-        return None
+        # Neste ponto, no ambiente headless, não há como prosseguir.
+        return None # Indica falha crítica na autenticação
 
     else:
-         logging.error("--- Falha crítica: Não foi possível carregar credenciais de token.json E não há refresh token disponível ou válido. Necessário autenticação inicial LOCALMENTE. ---")
-         return None
+         # Caso onde token.json não existe, estava vazio/corrompido, ou não continha refresh token válido.
+         logging.warning("Não foi possível carregar credenciais de token.json E não há refresh token disponível ou válido.")
+         logging.error("--- Falha crítica: Necessário executar a autenticação inicial LOCALMENTE (com generate_token.py) para criar/atualizar um token.json válido com refresh token,")
+         logging.error("e garantir que o arquivo canal1_token.json.base64 no repositório (ou Secret TOKEN_BASE64) contenha este token codificado CORRETAMENTE.")
+         return None # Indica falha crítica na autenticação
 
+
+    # 3. Verifica se ao final do processo temos credenciais válidas
     if not creds or not creds.valid:
+         # Este log é atingido se todas as tentativas falharam
          logging.error("--- Falha crítica final ao obter credenciais válidas após todas as tentativas. Saindo. ---")
-         return None
+         return None # Indica falha total na autenticação
+
 
     logging.info("--- Autenticação bem-sucedida. Construindo serviço da API do YouTube. ---")
+    # Constrói o serviço da API do YouTube com as credenciais obtidas
     try:
         youtube_service = build('youtube', 'v3', credentials=creds)
         logging.info("Serviço 'youtube', 'v3' construído.")
         return youtube_service
     except Exception as e:
+        # Captura falhas na construção do objeto de serviço da API
         logging.error(f"ERRO: Falha ao construir o serviço da API do YouTube: {e}", exc_info=True)
         return None
 
-# --- NOVAS FUNÇÕES PARA CRIAÇÃO DE CONTEÚDO E VÍDEO ---
+# --- FUNÇÕES PARA CRIAÇÃO DE CONTEÚDO E VÍDEO ---
 
-# Função placeholder para obter fatos/texto (você precisa implementar a lógica real)
+# Função para obter fatos/texto (você precisa implementar a lógica real)
 # Use as keywords do canal como base. A linguagem deve ser INGLÊS ('en').
 def get_facts_for_video(keywords, num_facts=5):
     logging.info(f"--- Obtendo fatos para o vídeo (Língua: Inglês) ---")
     logging.info(f"Keywords fornecidas: {keywords}")
     # >>>>> SEU CÓDIGO PARA OBTER FATOS REAIS EM INGLÊS VEM AQUI <<<<<
-    # Use as keywords como base para buscar fatos.
-    # Ex: buscar fatos aleatórios, usar uma API de curiosidades, etc.
-    # Retorne uma LISTA de strings, onde cada string é um fato.
-
+    # Use as keywords como base para buscar fatos (ex: APIs, scraping - CUIDADO!, lista predefinida).
+    # Esta é uma implementação BÁSICA e ESTÁTICA. SUBSTITUA PELA SUA LÓGICA REAL.
+    
     # Exemplo Simples Estático (Substitua pela sua lógica real que gera fatos em INGLÊS):
     facts = [
         "Did you know that a group of owls is called a parliament? It's a wise gathering!",
         "Honey never spoils. Imagine eating honey from a pharaoh's tomb!",
-        "The shortest war in history was between Britain and Zanzibar, lasting less than an hour.",
-        "A single cloud can weigh over a million pounds. That's heavier than some small planes!",
+        "The shortest war in history lasted only 38 to 45 minutes between Britain and Zanzibar on August 27, 1896.",
+        "A cloud can weigh over a million pounds. That's heavier than some small planes!",
         "If you could harness the energy of a lightning bolt, you could toast 100,000 slices of bread.",
         "The average person walks the equivalent of three times around the world in a lifetime."
     ]
@@ -158,7 +190,7 @@ def create_video_from_content(facts, audio_path, channel_title="Video"):
         total_duration = audio_clip.duration # A duração do vídeo será a do áudio
 
         # --- >>>>> SEU CÓDIGO DE CRIAÇÃO/EDIÇÃO DE VÍDEO COM MOVIEPY VEM AQUI <<<<< ---
-        # Este código é um EXEMPLO BÁSICO de um vídeo simples: tela preta com texto dos fatos.
+        # Este código é um EXEMPLO BÁSICO de um vídeo simples: tela preta com texto.
         # Adapte-o COMPLETAMENTE ao estilo visual do seu canal (imagens, animações, transições, etc.).
         # Se precisar de imagens/clipes, certifique-se de que foram baixados/gerenciados antes desta função.
 
@@ -245,7 +277,7 @@ def upload_video(youtube_service, video_path, title, description, tags, category
              return None # Retorna None em caso de erro
 
         logging.info(f"Preparando upload do arquivo: {video_path}")
-        # Define os metadados do vídeo (título, descrição, tags, categoria, status de privacidade)
+        # Define os metadados do upload (título, descrição, tags, categoria, status de privacidade)
         body= {
             'snippet': {
                 'title': title,
@@ -306,7 +338,7 @@ def upload_video(youtube_service, video_path, title, description, tags, category
 
 # Função principal do script (manter e integrar as novas chamadas)
 # Esta função coordena as etapas da automação para um canal específico
-def main(channel_name):
+def main(channel_name): # Renomeado para channel_name para clareza
     logging.info(f"--- Início do script de automação para o canal: {channel_name} ---")
 
     # Define os caminhos esperados para os arquivos JSON decodificados pelo workflow
@@ -463,7 +495,7 @@ def main(channel_name):
              logging.warning("Nenhuma keyword encontrada na configuração do canal. Considere adicionar keywords no channels_config.json.")
         # Chama a função placeholder (adicione sua lógica real DENTRO dela)
         # Retorna uma lista de strings (os fatos)
-        facts = get_facts_for_video(keywords) # <<< Sua lógica real para obter fatos em INGLÊS (dentro desta função)
+        facts = get_facts_for_video(keywords) # <<< Sua lógica real para obter fatos em INGLÊS
 
         if not facts:
              logging.error("ERRO: Não foi possível gerar fatos para o vídeo. Saindo.")
@@ -503,7 +535,8 @@ def main(channel_name):
 
         # 4. Criar o vídeo a partir do áudio e visuais usando MoviePy
         # Chama a função que você implementará (create_video_from_content)
-        # Adapte a chamada e os parâmetros conforme sua função necessitar.
+        # Adapte a chamada conforme sua implementação de create_video_from_content
+        # A função create_video_from_content (exemplo simples) está incluída acima.
         logging.info("Chamando função para criar o vídeo final com MoviePy...")
         # Passe os fatos, o áudio e os caminhos dos visuais (imagens/clipes) para esta função.
         # Exemplo: video_output_path = create_video_from_content(facts, audio_path, image_paths, video_clip_paths, channel_title=channel_config.get('title', 'Video'))
@@ -517,7 +550,8 @@ def main(channel_name):
         # 5. Gerar legendas (Opcional e Mais Avançado) - Se quiser isso agora, precisa implementar.
         # logging.info("Iniciando geração de legendas (Opcional)...")
         # >>>>> SEU CÓDIGO PARA GERAR LEGENDAS VEM AQUI (OPCIONAL) <<<<<
-        # Use uma API de Speech-to-Text no arquivo de áudio para obter o texto e timings.
+        # Use uma API de Speech-to-Text (como Google Cloud Speech-to-Text)
+        # no arquivo de áudio gerado, e sincronizar o texto com o tempo.
         # Ex: legenda_path = generate_subtitles(audio_path, lang='en')
         # if legenda_path and os.path.exists(legenda_path):
         #      logging.info(f"Arquivo de legendas gerado: {legenda_path}")
@@ -577,6 +611,7 @@ def main(channel_name):
 
 
 # Configuração do parser de argumentos (manter)
+# Esta função coordena as etapas da automação para um canal específico
 if __name__ == "__main__":
     logging.info("Script main.py iniciado via __main__.")
     parser = argparse.ArgumentParser(description="Automatiza o YouTube.")

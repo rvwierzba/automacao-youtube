@@ -32,7 +32,7 @@ from PIL import Image # Importar Pillow/PIL
 logging.basicConfig(level=logging.INFO, stream=sys.stdout, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
-# Escopos necessários para acessar a API do YouTube (upload)
+# Escopos necessários para acessar a API do YouTube (upload é o mais comum)
 SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
 
 # Função para obter o serviço autenticado (manter a versão corrigida)
@@ -47,7 +47,7 @@ def get_authenticated_service(client_secrets_path, token_path):
     if os.path.exists(token_path):
         try:
             logging.info(f"Tentando carregar credenciais de {token_path} usando from_authorized_user_file...")
-            # Use from_authorized_user_file para carregar credenciais do token.json
+            # Use Credentials.from_authorized_user_file para carregar credenciais do token.json.
             # Esta função lida automaticamente com a estrutura do token.json y su validez básica.
             creds = Credentials.from_authorized_user_file(token_path, SCOPES)
             logging.info("Credenciais carregadas com sucesso de token.json.")

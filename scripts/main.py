@@ -5,9 +5,9 @@ import json
 import sys
 import time # Útil para criar nomes de arquivo únicos baseados no tempo
 from googleapiclient.discovery import build # Para construir o serviço da API do YouTube
-from google_auth_oauthlib.flow import InstalledAppFlow # Necessário para carregar client_secrets e iniciar o fluxo (usado no refresh)
+from google_auth_oauthlib.flow import InstalledAppFlow # Necessário para carregar client_secrets
 from google.auth.transport.requests import Request # Para usar Requests com credenciais
-from google.oauth2.credentials import Credentials # Necessário para carregar credenciais de token.json
+from google.oauth2.credentials import Credentials # Necessário para carregar de token.json
 from googleapiclient.http import MediaFileUpload # Necessário para upload de mídia
 
 # --- Importações Adicionais Necessárias para a Criação de Conteúdo/Vídeo ---
@@ -15,10 +15,11 @@ from googleapiclient.http import MediaFileUpload # Necessário para upload de m�
 from gtts import gTTS
 # Para processamento e edição de vídeo com MoviePy (Integrando scripts/video_creator.py -> criar_video)
 # Importe as classes específicas que você vai usar para o seu vídeo.
-# Classes comuns do MoviePy: AudioFileClip, TextClip, CompositeVideoClip, ColorClip, ImageClip, VideoFileClip, vfx
+# Classes comuns: AudioFileClip, TextClip, CompositeVideoClip, ColorClip, ImageClip, VideoFileClip, vfx
+# Integrando lógica de video_creator.py
 from moviepy.editor import AudioFileClip, TextClip, CompositeVideoClip, ColorClip, ImageClip, VideoFileClip, vfx
 
-# Pode precisar de Pillow para TextClip/ImageClip do MoviePy
+# Pode precisar de Pillow para TextClip/ImageClip
 # Certifique-se de ter 'Pillow' no seu requirements.txt
 from PIL import Image # Importar Pillow/PIL
 
@@ -31,11 +32,11 @@ from PIL import Image # Importar Pillow/PIL
 logging.basicConfig(level=logging.INFO, stream=sys.stdout, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
-# Escopos necessários para acessar a API do YouTube (upload é o mais comum)
+# Escopos necessários para acessar a API do YouTube (upload)
 SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
 
-# Função para obter o serviço autenticado
-# Esta função lida com a carga do token.json e refresh automático de forma não interativa.
+# Função para obter o serviço autenticado (manter a versão corrigida)
+# Esta função lida com a carga do token.json e refresh automático.
 # Espera os caminhos para os arquivos JSON *já decodificados* criados pelo workflow
 def get_authenticated_service(client_secrets_path, token_path):
     logging.info("--- Tentando obter serviço autenticado ---")
@@ -46,14 +47,14 @@ def get_authenticated_service(client_secrets_path, token_path):
     if os.path.exists(token_path):
         try:
             logging.info(f"Tentando carregar credenciais de {token_path} usando from_authorized_user_file...")
-            # Use Credentials.from_authorized_user_file para carregar credenciais do token.json.
-            # Esta função lida automaticamente com a estrutura do token.json e validade básica.
+            # Use from_authorized_user_file para carregar credenciais do token.json
+            # Esta função lida automaticamente com a estrutura do token.json y su validez básica.
             creds = Credentials.from_authorized_user_file(token_path, SCOPES)
             logging.info("Credenciais carregadas com sucesso de token.json.")
         except Exception as e:
             # Logar aviso si el archivo token.json está inválido/corrompido (como el error 0xf3)
             # O outros errores de parsing.
-            logging.warning(f"Não foi possível carregar credenciais de {token_path}: {e}", exc_info=True) # Logar traceback para entender o error de parsing
+            logging.warning(f"Não foi possível carregar credenciais de {token_path}: {e}", exc_info=True) # Logar traceback para entender el error de parsing
             creds = None # Garantir que creds seja None si la carga falla
     else:
          logging.warning(f"Arquivo token.json NÃO encontrado em {token_path}. A autenticação completa pode ser necessária.")
@@ -94,7 +95,7 @@ def get_authenticated_service(client_secrets_path, token_path):
              logging.info(f"Arquivo {token_path} atualizado com sucesso.")
 
         except FileNotFoundError:
-             # Este erro não deveria acontecer se o workflow criou client_secrets.json corretamente
+             # Este erro não deveria acontecer si el workflow creó client_secrets.json correctamente
              logging.error(f"ERRO: Arquivo client_secrets.json NÃO encontrado em {client_secrets_path}. Necessário para refresh do token.", exc_info=True)
              creds = None # Falha crítica
         except Exception as e:
@@ -104,18 +105,17 @@ def get_authenticated_service(client_secrets_path, token_path):
 
     elif creds and not creds.refresh_token:
         logging.error("ERRO: Credenciais existentes expiradas, mas SEM refresh token disponível em token.json. Não é possível re-autorizar automaticamente.")
-        # Neste ponto, no ambiente headless, não há como prosseguir sem um refresh token.
-        return None # Indica falha crítica na autenticação
+        return None
 
     else:
-         # Caso onde token.json no existe, está vacío/corrompido, o no contenía refresh token válido para el refresh.
+         # Caso donde token.json no existe, está vacío/corrompido, o no contenía refresh token válido para el refresh.
          logging.warning("Não foi possível carregar credenciais de token.json E não há refresh token disponível ou válido.")
          logging.error("--- Falha crítica: Necessário executar a autenticação inicial LOCALMENTE (com generate_token.py) para criar/atualizar um token.json válido com refresh token,")
          logging.error("e garantir que o arquivo canal1_token.json.base64 no repositório (ou Secret TOKEN_BASE64) contenha este token codificado CORRETAMENTE.")
          return None # Indica falha crítica na autenticação
 
 
-    # 3. Verifica si al final del proceso tenemos credenciales válidas
+    # 3. Verifica si al final del proceso tenemos credenciais válidas
     if not creds or not creds.valid:
          # Este log es alcanzado si todos los intentos fallaron
          logging.error("--- Falha crítica final ao obter credenciais válidas após todas as tentativas. Saindo. ---")
@@ -258,312 +258,4 @@ def create_video_from_content(facts, audio_path, channel_title="Video"):
 
         # Combina todos os clipes visuais
         # Use CompositeVideoClip para sobrepor (fundo + textos)
-        # Ou concatenate_videoclips para clipes que vêm um depois do outro
-        final_video_clip = CompositeVideoClip(clips, size=(W, H)) # Combina o fundo e os textos sobrepostos
-
-
-        # Define o áudio do vídeo final como o áudio gerado anteriormente
-        final_video_clip = final_video_clip.set_audio(audio_clip)
-
-        # Garante que a duração do vídeo final corresponda à duração do áudio
-        final_video_clip = final_video_clip.set_duration(total_duration)
-
-
-        # --- <<<<< FIM DO SEU CÓDIGO DE CRIAÇÃO/EDIÇÃO DE VÍDEO COM MOVIEPY >>>>> ---
-        # Lembre-se de adicionar LOGS BASTANTE DETALHADOS DENTRO DESTE PROCESSO!
-        # Ex: logging.info("MoviePy: Carregando clip de áudio...")
-        # Ex: logging.info("MoviePy: Sincronizando clipes...")
-        # Ex: logging.info("MoviePy: Iniciando a escrita do arquivo de vídeo (renderização)...")
-        # Ex: logging.info(f"MoviePy: Renderizando quadro {i}/{total_quadros}...") # Si puede agregar un ciclo de progreso
-
-        # Salva o vídeo final em um arquivo
-        # Use um nome de arquivo único, talvez baseado no timestamp, e em uma pasta de saída
-        timestamp = int(time.time()) # Timestamp atual para nome único
-        output_video_dir = "generated_videos"
-        os.makedirs(output_video_dir, exist_ok=True) # Crea la carpeta si no existe
-        video_output_filename = f"{channel_title.replace(' ', '_').lower()}_{timestamp}_final.mp4"
-        video_output_path = os.path.join(output_video_dir, video_output_filename)
-
-
-        logging.info(f"Escrevendo o archivo de vídeo final para: {video_output_path}. Isso pode levar tempo...")
-        # Use um logger de progresso se moviepy.write_videofile suportar e você configurar
-        final_video_clip.write_videofile(video_output_path,
-                                         codec='libx264', # Codec de vídeo comum e recomendado para MP4
-                                         audio_codec='aac', # Codec de áudio comum e recomendado
-                                         fps=FPS, # Quadros por segundo definidos antes
-                                         threads=4 # Pode ajustar o número de threads para renderização
-                                         # logger='bar' # Descomente se quiser ver uma barra de progresso no log no terminal
-                                        )
-        logging.info("Arquivo de vídeo final escrito.")
-
-        return video_output_path # Retorna o caminho do arquivo de vídeo final
-
-    except Exception as e:
-        logging.error(f"ERRO durante a criação do vídeo com MoviePy: {e}", exc_info=True)
-        return None
-
-# --- FUNÇÃO DE UPLOAD ---
-# Esta função recebe o caminho do arquivo de vídeo e faz o upload para o YouTube
-# Adaptação baseada no seu script upload_youtube.py
-def upload_video(youtube_service, video_path, title, description, tags, category_id, privacy_status):
-    logging.info(f"--- Iniciando etapa: Upload do vídeo para o YouTube ---")
-    try:
-        # Verifica se o arquivo de vídeo final foi realmente criado e tem conteúdo (tamanho > 0)
-        if not os.path.exists(video_path) or not os.path.getsize(video_path) > 0:
-             logging.error(f"ERRO: Arquivo de vídeo final para upload NÃO encontrado ou está vazio em: {video_path}")
-             return None # Retorna None em caso de erro
-
-        logging.info(f"Preparando upload do arquivo: {video_path}")
-        # Define os metadados do upload (título, descrição, tags, categoria, status de privacidade)
-        body= {
-            'snippet': {
-                'title': title,
-                'description': description,
-                'tags': tags,
-                'categoryId': category_id # ID da categoria do YouTube. Ex: '28' para Ciência e Tecnologia. Adapte. Lista de IDs: https://developers.google.com/youtube/v3/docs/videos#snippet.categoryId
-            },
-            'status': {
-                'privacyStatus': privacy_status # 'public', 'unlisted', ou 'private'. Comece com 'private' para testar!
-            }
-            # Opcional: Adicionar 'publisheAt' para agendar o vídeo
-            # 'scheduledStartTime': 'YYYY-MM-DDTHH:MM:SS.0Z' # Use 'publishAt' em vez de 'scheduledStartTime'
-        }
-
-        # Cria o objeto MediaFileUpload para upload resumível
-        # O upload resumível é recomendado para arquivos maiores ou conexões instáveis
-        media_body = MediaFileUpload(video_path, resumable=True)
-
-        logging.info("Chamando youtube.videos().insert() para iniciar o upload...")
-        # Usa o método insert() da API videos().
-        # Define o 'part' como 'snippet,status' para incluir os metadados e o status de privacidade.
-        insert_request = youtube_service.videos().insert(
-            part=','.join(body.keys()), # Partes da requisição (snippet, status)
-            body=body, # Corpo da requisição com metadados do vídeo
-            media_body=media_body # Corpo da mídia (o arquivo de vídeo)
-        )
-
-        # Execute a requisição de upload. Isso fará o upload real.
-        # Este passo pode levar bastante tempo dependendo do tamanho do vídeo e conexão do runner.
-        logging.info("Executando requisição de upload. Isso pode levar tempo...")
-        # O Google API client suporta upload resumível automaticamente com MediaFileUpload(..., resumable=True).
-        # A chamada execute() gerencia os chunks e o progresso por baixo dos panos.
-        # Se você precisar de um watcher de progresso explícito, a documentação da biblioteca mostra como usar um MediaUploadProgress.
-        response_upload = insert_request.execute() # Executa a requisição HTTP real
-        logging.info("Requisição de upload executada.")
-
-        # Verifica a resposta do upload
-        video_id = response_upload.get('id')
-        if video_id:
-            logging.info(f"Upload completo. Vídeo ID: {video_id}")
-            # Construa o link correto do YouTube
-            logging.info(f"Link do vídeo (pode não estar ativo imediatamente se for privado): https://youtu.be/{video_id}") # Link correto do YouTube
-            return video_id # Retorna o ID do vídeo se o upload for bem-sucedido
-        else:
-             logging.error("ERRO: Requisição de upload executada, mas a resposta não contém um ID de vídeo.", exc_info=True)
-             return None # Retorna None em caso de falha no upload
-
-
-    except FileNotFoundError:
-        # Captura o erro se o arquivo de vídeo não for encontrado para a MediaFileUpload
-        logging.error(f"ERRO: Arquivo de vídeo final NÃO encontrado em {video_path} para upload.", exc_info=True)
-        return None
-    except Exception as e:
-        # Captura outros erros durante o processo de upload
-        logging.error(f"ERRO: Falha durante o upload do vídeo: {e}", exc_info=True)
-        return None
-
-    # Note: A mensagem de sucesso final do upload já está dentro do try/except acima.
-    # Não precisamos de outra aqui a menos que haja lógica adicional pós-upload.
-
-
-# Função principal do script
-# Esta função coordena as etapas da automação para um canal específico
-def main(channel_name):
-    logging.info(f"--- Início do script de automação para o canal: {channel_name} ---")
-
-    # Define os caminhos esperados para os arquivos JSON decodificados pelo workflow
-    # Estes arquivos SÃO criados pelo step de decodificação no main.yml
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    credentials_dir = os.path.join(base_dir, 'credentials')
-    config_path = os.path.join(base_dir, 'config', 'channels_config.json') # Caminho para o arquivo de configuração
-
-
-    # --- Carregar Configuração do Canal ---
-    logging.info(f"Carregando configuração do canal de {config_path}...")
-    channel_config = None
-    try:
-        # Garante leitura em UTF-8, crucial para arquivos de configuração
-        with open(config_path, 'r', encoding='utf-8') as f:
-            config_data = json.load(f)
-            # Encontra a configuração para o canal específico pelo nome
-            for channel_data in config_data.get('channels', []):
-                if channel_data.get('name') == channel_name:
-                    channel_config = channel_data
-                    break
-            if channel_config:
-                 logging.info(f"Configuração encontrada para o canal '{channel_name}'.")
-            else:
-                 logging.error(f"ERRO: Configuração NÃO encontrada para o canal '{channel_name}' no arquivo {config_path}.")
-                 sys.exit(1) # Sai se a configuração do canal não for encontrada
-
-    except FileNotFoundError:
-         logging.error(f"ERRO CRÍTICO: Arquivo de configuração NÃO encontrado em {config_path}. Certifique-se de que ele existe.")
-         sys.exit(1)
-    except json.JSONDecodeError:
-         logging.error(f"ERRO CRÍTICO: Erro ao decodificar o arquivo de configuração {config_path}. Verifique a sintaxe JSON.", exc_info=True)
-         sys.exit(1)
-    except Exception as e:
-         logging.error(f"ERRO inesperado ao carregar a configuração do canal: {e}", exc_info=True)
-         sys.exit(1)
-
-
-    # Define caminhos para credenciais com base na configuração do canal carregada
-    # Estes são os nomes dos arquivos .base64 NO REPOSITÓRIO.
-    client_secrets_base64_filename = channel_config.get('client_secret_file')
-    token_base64_filename = channel_config.get('token_file')
-
-    # Verifica se os nomes dos arquivos de credenciais foram encontrados na configuração
-    if not client_secrets_base64_filename:
-        logging.error(f"ERRO CRÍTICO: 'client_secret_file' não especificado para o canal '{channel_name}' em {config_path}.")
-        sys.exit(1)
-    if not token_base64_filename:
-        logging.error(f"ERRO CRÍTICO: 'token_file' não especificado para o canal '{channel_name}' em {config_path}.")
-        sys.exit(1)
-
-    # Define os caminhos completos esperados para os arquivos JSON *decodificados*
-    # que são criados na pasta credentials/ pelo workflow.
-    client_secrets_path = os.path.join(credentials_dir, 'client_secret.json') # Assume que o workflow sempre decodifica para este nome
-    token_path = os.path.join(credentials_dir, 'token.json') # Assume que o workflow sempre decodifica para este nome
-
-
-    # Adiciona verificações para garantir que os arquivos JSON decodificados existem APÓS o step de decodificação do workflow
-    logging.info("Verificando arquivos de credenciais decodificados (client_secret.json e token.json) criados pelo workflow...")
-    if not os.path.exists(client_secrets_path):
-         logging.error(f"ERRO CRÍTICO: Arquivo client_secret.json NÃO encontrado em {client_secrets_path}. Verifique o step 'Decodificar arquivos .base64 do Repositório' no main.yml e o arquivo de entrada {client_secrets_base64_filename} no repositório.")
-         sys.exit(1)
-    if not os.path.exists(token_path):
-        logging.error(f"ERRO CRÍTICO: Arquivo token.json NÃO encontrado em {token_path}. Verifique o step 'Decodificar arquivos .base64 do Repositório' no main.yml e o arquivo de entrada {token_base64_filename} no repositório.")
-        sys.exit(1)
-
-    logging.info("Arquivos de credenciais decodificados encontrados em credentials/.")
-
-
-    # Obtém o serviço do YouTube autenticado passando os caminhos dos arquivos JSON decodificados
-    logging.info("Chamando get_authenticated_service() para autenticar com token.json e client_secrets.json...")
-    youtube = get_authenticated_service(client_secrets_path, token_path)
-    logging.info("Chamada a get_authenticated_service() concluída.")
-
-    # Verifica si la autenticación fue exitosa (si get_authenticated_service devolvió un objeto build)
-    if youtube is None:
-        logging.error("Falha final na autenticação do serviço YouTube. Saindo do script.")
-        sys.exit(1)
-
-    logging.info("Serviço do YouTube autenticado com sucesso e pronto para uso da API.")
-
-    # --- INÍCIO DA SEGUNDA PARTE: CRIAÇÃO DE CONTEÚDO E VÍDEO ---
-    # Este bloco agora contém as chamadas para as novas funções de criação/upload
-
-    try:
-        logging.info("--- Iniciando etapa: CRIAÇÃO DE CONTEÚDO, VÍDEO E UPLOAD ---")
-
-        # --- Seu código existente para interagir com a API (buscar canal, uploads, playlists) ---
-        # Este código estava no seu main() original. Mantive os logs e a estrutura.
-        logging.info("Iniciando operações iniciais da API do YouTube (buscar canal, uploads, etc.)...")
-
-        logging.info("Buscando informações do canal (mine=True)...")
-        request_channel = youtube.channels().list(
-            part="snippet,contentDetails,statistics",
-            mine=True
-        )
-        logging.info("Chamando youtube.channels().list().execute()...")
-        response_channel = request_channel.execute()
-        logging.info("youtube.channels().list().execute() concluído.")
-        # logging.info(f"Informações do canal: {response_channel}") # Descomente para debug detalhado da resposta
-
-
-        if not ('items' in response_channel and response_channel['items']):
-             logging.error("ERRO: Não foi possível obter informações do seu canal (mine=True). Verifique as permissões das credenciais.")
-             sys.exit(1)
-
-
-        logging.info("Buscando ID da playlist de uploads...")
-        uploads_playlist_id = response_channel['items'][0]['contentDetails']['relatedPlaylists']['uploads']
-        logging.info(f"ID da playlist de uploads encontrado: {uploads_playlist_id}")
-
-        logging.info("Buscando uploads da playlist...")
-        request_uploads = youtube.playlistItems().list(
-            part="snippet,contentDetails",
-            playlistId=uploads_playlist_id
-        )
-        logging.info("Chamando youtube.playlistItems().list().execute()...")
-        response_uploads = request_uploads.execute()
-        logging.info("youtube.playlistItems().list().execute() concluído.")
-        # logging.info(f"Uploads do canal: {response_uploads}") # Descomente para debug detalhado
-
-        if 'items' in response_uploads and response_uploads['items']:
-            logging.info(f"Encontrados {len(response_uploads['items'])} vídeos na playlist de uploads.")
-            for i, item in enumerate(response_uploads['items']):
-                video_id = item['contentDetails']['videoId']
-                video_title = item['snippet']['title']
-                logging.info(f"Processando vídeo {i+1}: ID={video_id}, Título='{video_title}'")
-        else:
-             logging.info("Nenhum vídeo encontrado na playlist de uploads.")
-
-
-        logging.info("Buscando playlists do canal (mine=True)...")
-        request_playlists = youtube.playlists().list(
-            part="snippet,contentDetails",
-            mine=True
-        )
-        logging.info("Chamando youtube.playlists().list().execute()...")
-        response_playlists = request_playlists.execute()
-        logging.info("youtube.playlists().list().execute() concluído.")
-        # logging.info(f'Playlists do canal: {response_playlists}') # Descomente para debug detalhado
-
-        logging.info("--- Etapa de operações iniciais da API concluída. ---")
-
-        # --- CRIAÇÃO DE CONTEÚDO (texto, áudio, visuais) ---
-
-        logging.info("--- Iniciando etapa: Criação de conteúdo (texto, áudio, visuais) ---")
-
-        # 1. Obter fatos/texto (chama a função que você implementará)
-        logging.info("Obtendo fatos para o vídeo...")
-        # Obtém as keywords da configuração do canal
-        keywords = channel_config.get('keywords', '').split(',')
-        keywords = [k.strip() for k in keywords if k.strip()]
-        if not keywords:
-             logging.warning("Nenhuma keyword encontrada na configuração do canal. Considere adicionar keywords no channels_config.json.")
-        # Chama a função placeholder (adicione sua lógica real DENTRO dela)
-        # Retorna uma lista de strings (os fatos)
-        facts = get_facts_for_video(keywords) # <<< Sua lógica real para obter fatos em INGLÊS
-
-        if not facts:
-             logging.error("ERRO: Não foi possível gerar fatos para o vídeo. Saindo.")
-             sys.exit(1)
-        logging.info(f"Fatos obtidos: {facts}")
-
-        # 2. Gerar áudio a partir dos fatos em inglês
-        logging.info("Gerando áudio a partir dos fatos...")
-        audio_text = ".\n".join(facts) + "." # Combina fatos em um texto para narração
-        # Chama a função generate_audio_from_text (já implementada acima)
-        # Salva o áudio em temp_audio/{nomedocanal}_audio_{timestamp}.mp3
-        audio_path = generate_audio_from_text(audio_text, lang='en', output_filename=f"{channel_name}_audio_{int(time.time())}.mp3")
-
-        if not audio_path:
-             logging.error("ERRO: Falha ao gerar o arquivo de áudio. Saindo.")
-             sys.exit(1)
-        logging.info(f"Arquivo de áudio gerado: {audio_path}")
-
-        # 3. Preparar visuais (Este é um placeholder importante - você precisa baixar ou gerar imagens/vídeos)
-        logging.info("Preparando visuais para o vídeo (imagens/clipes)...")
-        # >>>>> SEU CÓDIGO PARA PREPARAR VISUAIS VEM AQUI <<<<<
-        # Implemente sua lógica para baixar, gerar ou selecionar imagens/vídeos
-        # que serão usados na edição do vídeo, talvez baseados nos fatos ou keywords.
-        # Você precisará dos caminhos desses arquivos para a função create_video_from_content.
-        # Exemplo:
-        # image_paths = download_images_related_to_facts(facts) # Sua função para baixar imagens
-        # video_clip_paths = get_stock_footage(keywords) # Sua função para obter clipes de vídeo
-        logging.info("Preparação de visuais concluída (assumindo lógica implementada).")
-
-
-        logging.info("--- Etapa concluída: Criação de conteúdo (texto, audio
+        # Ou concatenate_videoclip

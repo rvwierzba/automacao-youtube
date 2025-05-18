@@ -53,14 +53,14 @@ def get_authenticated_service(client_secrets_path, token_path):
         except Exception as e:
             # Logar aviso si el archivo token.json está inválido/corrompido (como el error 0xf3, ¡AHORA RESUELTO!)
             # O outros errores de parsing.
-            logging.warning(f"Não foi possível carregar credenciais de {token_path}: {e}", exc_info=True) # Logar traceback para entender o erro de parsing
-            creds = None # Garantir que creds seja None se a carga falhar
+            logging.warning(f"Não foi possível carregar credenciais de {token_path}: {e}", exc_info=True) # Logar traceback para entender o error de parsing
+            creds = None # Garantir que creds seja None si la carga falla
     else:
          logging.warning(f"Arquivo token.json NÃO encontrado em {token_path}.")
-         # Se token.json não existe, creds permanece None. O próximo bloco lida com isso.
+         # Si token.json no existe, creds permanece None. El siguiente bloque lo maneja.
 
 
-    # 2. Se as credenciais foram carregadas mas estão expiradas, tenta refreshar
+    # 2. Si las credenciales fueron cargadas pero están expiradas, intenta refreshar
     if creds and creds.expired and creds.refresh_token:
         logging.info("Credenciais expiradas, tentando atualizar usando refresh token.")
         try:
@@ -115,7 +115,7 @@ def get_authenticated_service(client_secrets_path, token_path):
 
     # 3. Verifica se ao final do processo temos credenciais válidas
     if not creds or not creds.valid:
-         # Este log é atingido se todas as tentativas falharam
+         # Este log es alcanzado si todos los intentos fallaron
          logging.error("--- Falha crítica final ao obter credenciais válidas após todas as tentativas. Saindo. ---")
          return None # Indica falha total na autenticação
 
@@ -453,7 +453,6 @@ def main(channel_name):
 
     # Verifica se a autenticação foi bem-sucedida (se get_authenticated_service retornou um objeto build)
     if youtube is None:
-        # A mensagem de error específica ya foi logada dentro de get_authenticated_service
         logging.error("Falha final na autenticação do serviço YouTube. Saindo do script.")
         sys.exit(1)
 
@@ -467,7 +466,7 @@ def main(channel_name):
 
         # --- Seu código existente para interagir com a API (buscar canal, uploads, playlists) ---
         # Este código estava no seu main() original. Mantive os logs e a estrutura.
-        logging.info("Iniciando operações iniciais da API do YouTube (buscar canal, uploads, playlists)...")
+        logging.info("Iniciando operações iniciais da API do YouTube (buscar canal, uploads, etc.)...")
 
         logging.info("Buscando informações do canal (mine=True)...")
         request_channel = youtube.channels().list(
@@ -521,48 +520,4 @@ def main(channel_name):
 
         logging.info("--- Etapa de operações iniciais da API concluída. ---")
 
-        # --- CRIAÇÃO DE CONTEÚDO (texto, áudio, visuais) ---
-
-        logging.info("--- Iniciando etapa: Criação de conteúdo (texto, áudio, visuais) ---")
-
-        # 1. Obter fatos/texto (chama a função que você implementará)
-        logging.info("Obtendo fatos para o vídeo...")
-        # Obtém as keywords da configuração do canal
-        keywords = channel_config.get('keywords', '').split(',')
-        keywords = [k.strip() for k in keywords if k.strip()]
-        if not keywords:
-             logging.warning("Nenhuma keyword encontrada na configuração do canal. Considere adicionar keywords no channels_config.json.")
-        # Chama a função placeholder (adicione sua lógica real DENTRO dela)
-        # Retorna uma lista de strings (os fatos)
-        facts = get_facts_for_video(keywords) # <<< Sua lógica real para obter fatos em INGLÊS
-
-        if not facts:
-             logging.error("ERRO: Não foi possível gerar fatos para o vídeo. Saindo.")
-             sys.exit(1)
-        logging.info(f"Fatos obtidos: {facts}")
-
-        # 2. Gerar áudio a partir dos fatos em inglês
-        logging.info("Gerando áudio a partir dos fatos...")
-        audio_text = ".\n".join(facts) + "." # Combina fatos em um texto para narração
-        # Chama a função generate_audio_from_text (já implementada acima)
-        # Salva o áudio em temp_audio/{nomedocanal}_audio_{timestamp}.mp3
-        audio_path = generate_audio_from_text(audio_text, lang='en', output_filename=f"{channel_name}_audio_{int(time.time())}.mp3")
-
-        if not audio_path:
-             logging.error("ERRO: Falha ao gerar o arquivo de áudio. Saindo.")
-             sys.exit(1)
-        logging.info(f"Arquivo de áudio gerado: {audio_path}")
-
-        # 3. Preparar visuais (Este é um placeholder importante - você precisa baixar ou gerar imagens/vídeos)
-        logging.info("Preparando visuais para o vídeo (imagens/clipes)...")
-        # >>>>> SEU CÓDIGO PARA PREPARAR VISUAIS VEM AQUI <<<<<
-        # Implemente sua lógica para baixar, gerar ou selecionar imagens/vídeos
-        # que serão usados na edição do vídeo, talvez baseados nos fatos ou keywords.
-        # Você precisará dos caminhos desses arquivos para a função create_video_from_content.
-        # Exemplo:
-        # image_paths = download_images_related_to_facts(facts) # Sua função para baixar imagens
-        # video_clip_paths = get_stock_footage(keywords) # Sua função para obter clipes de vídeo
-        logging.info("Preparação de visuais concluída (assumindo lógica implementada).")
-
-
-        logging.info("--- Etapa concluída: Criação de conteúdo (texto, audio
+        # --- CRIAÇÃO DE CONTEÚDO (texto, audio)

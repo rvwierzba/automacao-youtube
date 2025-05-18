@@ -1,538 +1,525 @@
-// Program.cs
+import os
+import argparse
+import logging
+import json
+import sys
+import time # Útil para criar nomes de arquivo únicos baseados no tempo
+from googleapiclient.discovery import build
+from google_auth_oauthlib.flow import InstalledAppFlow # Necessário para carregar client_secrets
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials # Necessário para carregar de token.json
+from googleapiclient.http import MediaFileUpload # Necessário para upload de mídia
 
-using Microsoft.EntityFrameworkCore;
-using Npgsql.EntityFrameworkCore.PostgreSQL;
-using System.Net.Http;
-using System.Text.Json;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Configuration;
-using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.IdentityModel.Tokens;
-using System.Text;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using Backend.Models;
-using Backend.Data;
-using System.Collections.Generic;
-using System.Linq;
-using System;
-using Microsoft.AspNetCore.Authorization;
-using Backend.Services;
-using Backend.Models.Requests;
-using Backend.Models.Plans;
-using Backend.Models.Responses; // Using para LoginResponse
-using Stripe;
-using Stripe.Checkout;
-using Microsoft.OpenApi.Models;
-using Microsoft.Extensions.Logging;
-using Microsoft.AspNetCore.Http; // Para StatusCodes e HttpContext
+# --- Importações Adicionais Necessárias para a Criação de Conteúdo/Vídeo ---
+# Para gerar áudio a partir de texto
+from gtts import gTTS
+# Para processamento e edição de vídeo com MoviePy
+# Importe as classes específicas que você vai usar para o seu vídeo.
+# Classes comuns: AudioFileClip, TextClip, CompositeVideoClip, ColorClip, ImageClip, VideoFileClip, vfx
+# Integrando lógica de video_creator.py
+from moviepy.editor import AudioFileClip, TextClip, CompositeVideoClip, ColorClip, ImageClip, VideoFileClip, vfx
 
-var builder = WebApplication.CreateBuilder(args);
-
-var stripeSecretKey = builder.Configuration["Stripe:SecretKey"];
-if (string.IsNullOrEmpty(stripeSecretKey)) { throw new InvalidOperationException("Chave secreta do Stripe (Stripe:SecretKey) não configurada."); }
-StripeConfiguration.ApiKey = stripeSecretKey;
-
-// --- Configuração dos Serviços ---
-builder.Services.AddControllers();
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(options =>
-{
-    options.SwaggerDoc("v1", new OpenApiInfo { Version = "v1", Title = "AIketing API", Description = "API para o serviço AIketing SaaS" });
-    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme { In = ParameterLocation.Header, Description = "Insira 'Bearer' [espaço] e o token JWT. Ex: Bearer ey...", Name = "Authorization", Type = SecuritySchemeType.Http, BearerFormat = "JWT", Scheme = "Bearer" }); // Type = Http
-    options.AddSecurityRequirement(new OpenApiSecurityRequirement { { new OpenApiSecurityScheme { Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" } }, new List<string>() } });
-});
-
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseNpgsql(connectionString));
-
-builder.Services.AddIdentity<User, IdentityRole>(options =>
-    {
-        options.SignIn.RequireConfirmedAccount = false;
-        options.Password.RequireDigit = true;
-        options.Password.RequireLowercase = true;
-        options.Password.RequireUppercase = true;
-        options.Password.RequireNonAlphanumeric = true;
-        options.Password.RequiredLength = 8;
-        options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(5);
-        options.Lockout.MaxFailedAccessAttempts = 5;
-        options.User.RequireUniqueEmail = true;
-    })
-    .AddEntityFrameworkStores<ApplicationDbContext>()
-    .AddDefaultTokenProviders();
-
-builder.Services.AddAuthentication(options =>
-    {
-        options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-    })
-    .AddJwtBearer(options =>
-    {
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"] ?? throw new InvalidOperationException("Jwt:Key not configured"))),
-            ValidateIssuer = true,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"] ?? throw new InvalidOperationException("Jwt:Issuer not configured"), // Deve ser http://localhost:5235
-            ValidateAudience = true,
-            ValidAudience = builder.Configuration["Jwt:Audience"] ?? throw new InvalidOperationException("Jwt:Audience not configured"), // Deve ser http://localhost:5235
-            ValidateLifetime = true,
-            ClockSkew = TimeSpan.Zero
-        };
-    });
-
-builder.Services.AddHttpClient();
-builder.Services.AddScoped<IGeradorTextoService, GeradorTextoServiceLocalOllama>();
-builder.Services.AddScoped<IGeradorImagemService, GeradorImagemServiceApiExterna>();
-builder.Services.AddScoped<Backend.Services.IPlanService, Backend.Services.PlanService>();
-
-if (builder.Environment.IsDevelopment())
-{
-    builder.Services.AddCors(options =>
-    {
-        options.AddPolicy("AllowAll", policy =>
-        {
-            policy.AllowAnyOrigin()
-                  .AllowAnyMethod()
-                  .AllowAnyHeader();
-        });
-    });
-}
-
-var app = builder.Build();
-
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI(c => { c.SwaggerEndpoint("/swagger/v1/swagger.json", "AIketing API v1"); });
-    app.UseCors("AllowAll");
-    app.UseDeveloperExceptionPage();
-}
-else
-{
-    app.UseExceptionHandler("/error"); // Endpoint de erro genérico
-    app.UseHsts();
-}
-
-// Endpoint de erro genérico (exemplo)
-app.MapGet("/error", () => Results.Problem("Ocorreu um erro inesperado.", statusCode: 500)).ExcludeFromDescription();
+# Pode precisar de Pillow para TextClip/ImageClip
+# Certifique-se de ter 'Pillow' no seu requirements.txt
+from PIL import Image # Importar Pillow/PIL
 
 
-app.UseHttpsRedirection();
-app.UseAuthentication();
-app.UseAuthorization();
+# Configurar logging para enviar output para o console do GitHub Actions
+# Use level=logging.INFO para ver as mensagens informativas sobre o progresso.
+# Descomente a linha abaixo para DEBUG mais detalhado (mostrará mensagens debug)
+# logging.basicConfig(level=logging.DEBUG, stream=sys.stdout, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, stream=sys.stdout, format='%(asctime)s - %(levelname)s - %(message)s')
 
-// --- ENDPOINTS (COM IMPLEMENTAÇÕES COMPLETAS) ---
 
-app.MapGet("/generate-test", async (
-    IGeradorTextoService generator,
-    UserManager<User> userManager,
-    ApplicationDbContext dbContext,
-    Backend.Services.IPlanService planService,
-    ClaimsPrincipal userPrincipal,
-    ILogger<Program> logger,
-    [FromQuery] string prompt,
-    [FromQuery] string? modelName
-    ) => {
-        logger.LogInformation("Executando /generate-test...");
-        if (string.IsNullOrWhiteSpace(prompt)) return Results.BadRequest("O parâmetro 'prompt' é obrigatório.");
-        var userId = userManager.GetUserId(userPrincipal);
-        if (userId == null) return Results.Unauthorized();
-        var user = await userManager.Users.FirstOrDefaultAsync(u => u.Id == userId);
-        if (user == null) return Results.NotFound("Usuário não encontrado.");
-        if (string.IsNullOrEmpty(user.CurrentPlanName) || user.SubscriptionCycleStart == default)
-        {
-             user.CurrentPlanName ??= "Free";
-             if (user.SubscriptionCycleStart == default) { user.SubscriptionCycleStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc); } // Garantir UTC
-             await userManager.UpdateAsync(user);
+# Escopos necessários para acessar a API do YouTube (upload)
+SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
+
+# Função para obter o serviço autenticado (manter a versão corrigida)
+# Esta função lida com a carga do token.json e refresh automático.
+# Espera os caminhos para os arquivos JSON *já decodificados* criados pelo workflow
+def get_authenticated_service(client_secrets_path, token_path):
+    logging.info("--- Tentando obter serviço autenticado ---")
+    creds = None # Inicializa credenciais como None
+
+    # 1. Tenta carregar credenciais do token.json existente (decodificado pelo workflow)
+    # Este arquivo foi decodificado pelo workflow a partir de canal1_token.json.base64
+    if os.path.exists(token_path):
+        try:
+            logging.info(f"Tentando carregar credenciais de {token_path} usando from_authorized_user_file...")
+            # Use from_authorized_user_file para carregar credenciais do token.json
+            # Esta função lida automaticamente com a estrutura do token.json
+            creds = Credentials.from_authorized_user_file(token_path, SCOPES)
+            logging.info("Credenciais carregadas com sucesso de token.json.")
+        except Exception as e:
+            # Logar aviso si el archivo token.json está inválido/corrompido (como el error 0xf3, ¡AHORA RESUELTO!)
+            # O outros errores de parsing.
+            logging.warning(f"Não foi possível carregar credenciais de {token_path}: {e}", exc_info=True) # Logar traceback para entender o erro de parsing
+            creds = None # Garantir que creds seja None se a carga falhar
+    else:
+         logging.warning(f"Arquivo token.json NÃO encontrado em {token_path}.")
+         # Se token.json não existe, creds permanece None. O próximo bloco lida com isso.
+
+
+    # 2. Se as credenciais foram carregadas mas estão expiradas, tenta refreshar
+    if creds and creds.expired and creds.refresh_token:
+        logging.info("Credenciais expiradas, tentando atualizar usando refresh token.")
+        try:
+             # Use InstalledAppFlow para carregar client_secrets e configurar o refresh
+             # É importante carregar o client_secrets aqui para que o objeto creds saiba seu client_id/secret para o refresh.
+             logging.info(f"Carregando client_secrets de {client_secrets_path} para auxiliar o refresh...")
+             flow = InstalledAppFlow.from_client_secrets_file(client_secrets_path, SCOPES)
+             # Define as credenciais existentes (com refresh token) no objeto flow
+             flow.credentials = creds
+             logging.info("Chamando flow.refresh_credentials()...")
+             # Tenta usar o refresh token para obter um novo access token. Esta chamada é NÃO INTERATIVA.
+             flow.refresh_credentials()
+             creds = flow.credentials # Atualiza creds com o token de acesso recém-obtido
+             logging.info("Token de acesso atualizado com sucesso usando refresh token.")
+
+             # Salva as credenciais atualizadas de volta no token.json
+             logging.info(f"Salvando token atualizado em {token_path}...")
+             with open(token_path, 'w') as token_file:
+                 # Extrai os atributos necessários do objeto Credentials para salvar no JSON
+                 token_data = {
+                     'token': creds.token,
+                     'refresh_token': creds.refresh_token,
+                     'token_uri': creds.token_uri,
+                     'client_id': creds.client_id,
+                     'client_secret': creds.client_secret,
+                     'scopes': creds.scopes,
+                     'expiry': creds.expiry.isoformat() if creds.expiry else None # Incluir data de expiração
+                 }
+                 json.dump(token_data, token_file, indent=4)
+             logging.info(f"Arquivo {token_path} atualizado com sucesso.")
+
+        except FileNotFoundError:
+             # Este erro não deveria acontecer se o workflow criou client_secrets.json
+             logging.error(f"ERRO: Arquivo client_secrets.json NÃO encontrado em {client_secrets_path}. Necessário para refresh do token.", exc_info=True)
+             creds = None # Falha crítica
+        except Exception as e:
+            # Captura erros durante o processo de refresh
+            logging.error(f"ERRO: Falha ao atualizar token de acesso com refresh token: {e}", exc_info=True)
+            creds = None # A atualização falhou, credenciais não são válidas
+
+    elif creds and not creds.refresh_token:
+        logging.error("ERRO: Credenciais existentes expiradas, mas SEM refresh token disponível em token.json. Não é possível re-autorizar automaticamente.")
+        return None
+
+    else:
+         # Caso onde token.json não existe, estava vazio/corrompido, ou não continha refresh token válido.
+         logging.warning("Não foi possível carregar credenciais de token.json E não há refresh token disponível ou válido.")
+         logging.error("--- Falha crítica: Necessário executar a autenticação inicial LOCALMENTE (com generate_token.py) para criar/atualizar um token.json válido com refresh token,")
+         logging.error("e garantir que o arquivo canal1_token.json.base64 no repositório (ou Secret TOKEN_BASE64) contenha este token codificado CORRETAMENTE.")
+         return None # Indica falha crítica na autenticação
+
+
+    # 3. Verifica se ao final do processo temos credenciais válidas
+    if not creds or not creds.valid:
+         # Este log é atingido se todas as tentativas falharam
+         logging.error("--- Falha crítica final ao obter credenciais válidas após todas as tentativas. Saindo. ---")
+         return None # Indica falha total na autenticação
+
+
+    logging.info("--- Autenticação bem-sucedida. Construindo serviço da API do YouTube. ---")
+    # Constrói o serviço da API do YouTube com as credenciais obtidas
+    try:
+        youtube_service = build('youtube', 'v3', credentials=creds)
+        logging.info("Serviço 'youtube', 'v3' construído.")
+        return youtube_service
+    except Exception as e:
+        # Captura falhas na construção do objeto de serviço da API
+        logging.error(f"ERRO: Falha ao construir o serviço da API do YouTube: {e}", exc_info=True)
+        return None
+
+# --- FUNÇÕES PARA CRIAÇÃO DE CONTEÚDO E VÍDEO ---
+
+# Função para obter fatos/texto (você precisa implementar a lógica real)
+# Use as keywords do canal como base. A linguagem deve ser INGLÊS ('en').
+# Retorna uma LISTA de strings, onde cada string é um fato.
+# Baseado em scripts/video_creator.py -> criar_video, adaptando a obtenção do texto
+def get_facts_for_video(keywords, num_facts=5):
+    logging.info(f"--- Obtendo fatos para o vídeo (Língua: Inglês) ---")
+    logging.info(f"Keywords fornecidas: {keywords}")
+    # >>>>> SEU CÓDIGO PARA OBTER FATOS REAIS EM INGLÊS VEM AQUI <<<<<
+    # Use as keywords como base para buscar fatos (ex: APIs externas, scraping - CUIDADO!, lista predefinida).
+    # Esta é uma implementação BÁSICA e ESTÁTICA com alguns exemplos. SUBSTITUA PELA SUA LÓGICA REAL.
+    # Certifique-se de que o texto obtido está formatado corretamente para Text-to-Speech e exibição.
+
+    # Exemplo Simples Estático (Substitua pela sua lógica real que gera/busca fatos em INGLÊS):
+    facts = [
+        "Did you know that a group of owls is called a parliament? It's a wise gathering!",
+        "Honey never spoils. Archaeologists have even found pots of honey in ancient Egyptian tombs that are over 3,000 years old and still edible!",
+        "The shortest war in history lasted only 38 to 45 minutes between Britain and Zanzibar on August 27, 1896.",
+        "A cloud can weigh over a million pounds. That's heavier than some small planes!",
+        "If you could harness the energy of a lightning bolt, you could toast 100,000 slices of bread.",
+        "The average person walks the equivalent of three times around the world in a lifetime."
+    ]
+    # <<<<< FIM DO SEU CÓDIGO PARA OBTER FATOS REAIS >>>>>
+
+    if not facts:
+        logging.warning("Nenhum fato foi gerado ou encontrado.")
+    else:
+        logging.info(f"Gerados {len(facts)} fatos.")
+
+    return facts
+
+# Função para gerar áudio em inglês a partir de texto usando gTTS
+# Salva o arquivo de áudio em uma pasta temporária
+# Baseado em scripts/video_creator.py -> criar_audio
+def generate_audio_from_text(text, lang='en', output_filename="audio.mp3"):
+    logging.info(f"--- Gerando áudio a partir de texto (Língua: {lang}) ---")
+    try:
+        # Define o caminho de saída dentro de uma pasta temporária para áudios
+        output_dir = "temp_audio"
+        os.makedirs(output_dir, exist_ok=True) # Cria la carpeta temp_audio si no existe
+        audio_path = os.path.join(output_dir, output_filename)
+
+        tts = gTTS(text=text, lang=lang, slow=False) # lang='en' para inglês
+        tts.save(audio_path)
+        logging.info(f"Áudio gerado e salvo em: {audio_path}")
+        return audio_path
+    except Exception as e:
+        logging.error(f"ERRO ao gerar áudio: {e}", exc_info=True)
+        return None
+
+# Função para criar o vídeo final usando MoviePy
+# Adapte esta função COMPLETAMENTE para o estilo visual do seu canal!
+# Recebe a lista de fatos, caminho do áudio, e o título do canal (para nomear o arquivo)
+# Baseado em scripts/video_creator.py -> criar_video, adaptando a lógica MoviePy
+def create_video_from_content(facts, audio_path, channel_title="Video"):
+    logging.info(f"--- Criando vídeo a partir de conteúdo ({len(facts)} fatos) e áudio usando MoviePy ---")
+    try:
+        # Carrega o clipe de áudio gerado
+        if not os.path.exists(audio_path):
+             logging.error(f"Arquivo de áudio não encontrado: {audio_path}")
+             return None
+
+        audio_clip = AudioFileClip(audio_path)
+        total_duration = audio_clip.duration # A duração do vídeo será a do áudio
+
+        # --- >>>>> SEU CÓDIGO DE CRIAÇÃO/EDIÇÃO DE VÍDEO COM MOVIEPY VEM AQUI <<<<< ---
+        # Este código é um EXEMPLO BÁSICO de um vídeo simples: tela preta com texto.
+        # Adapte-o COMPLETAMENTE ao estilo visual do seu canal (imagens, animações, transições, etc.).
+        # Se precisar de imagens/clipes, certifique-se de que foram baixados/gerenciados ANTES desta função e use os caminhos aqui.
+
+        # Exemplo BÁSICO:
+        W, H = 1920, 1080 # Resolução Exemplo: Full HD (adapte se necessário)
+        FPS = 24 # Quadros por segundo Exemplo: 24 FPS (adapte se necessário)
+
+        # Cria um clipe de fundo (pode ser uma cor sólida, ou carregue uma IMAGEM/VÍDEO BASE aqui)
+        # Ex: background_clip = ColorClip((W, H), color=(0, 0, 0), duration=total_duration) # Fundo preto
+        # Ex: background_clip = ImageClip("caminho/para/imagem_fundo.jpg").set_duration(total_duration).resize(newsize=(W,H)) # Imagem de fundo estática
+        # Ex: background_clip = VideoFileClip("caminho/para/video_base.mp4").subclip(0, total_duration).resize(newsize=(W,H)) # Vídeo de fundo
+
+        # Neste exemplo simples, criaremos clipes de texto individuais para cada fato
+        # e os exibiremos sequencialmente.
+
+        clips = [] # Lista para armazenar os clipes de vídeo
+        current_text_time = 0 # Tempo de início do texto atual
+
+        # Criar um clipe de fundo para todo o vídeo
+        background_clip = ColorClip((W, H), color=(0, 0, 0), duration=total_duration) # Fundo preto
+
+        clips.append(background_clip) # Adiciona o fundo como primeiro clipe (base)
+
+        # Exemplo de como mostrar cada fato como texto na tela por uma fração da duração total
+        # Você provavelmente vai querer sincronizar isso mais precisamente com o áudio.
+        # Isso requer analisar o áudio para obter timings de fala ou ter controle sobre a narração.
+
+        # Dividir a duração total igualmente entre os fatos para este exemplo simples
+        duration_per_fact = total_duration / len(facts) if len(facts) > 0 else total_duration
+
+        for i, fact in enumerate(facts):
+            # Cria um TextClip para cada fato
+            # Adapte fonte, tamanho da fonte (fontsize), cor (color), alinhamento (align), etc.
+            # Certifique-se de que a fonte usada está disponível no ambiente do GitHub Actions ou a inclua.
+            text_clip_fact = TextClip(fact,
+                                    fontsize=40,
+                                    color='white',
+                                    bg_color='transparent', # Fundo transparente
+                                    size=(W*0.8, None), # Largura da caixa de texto, altura automática
+                                    method='caption',
+                                    align='center', # Alinha o texto ao centro
+                                    stroke_color='black', # Exemplo de contorno
+                                    stroke_width=1)
+
+            # Define a duração e a posição do clipe de texto do fato
+            # Neste exemplo, cada fato aparece por `duration_per_fact` segundos
+            # Você pode adicionar efeitos (fadeIn, fadeOut) se quiser
+            text_clip_fact = text_clip_fact.set_duration(duration_per_fact)
+            text_clip_fact = text_clip_fact.set_position('center') # Centraliza o texto na tela
+            # Define o tempo de início do clipe de texto
+            text_clip_fact = text_clip_fact.set_start(i * duration_per_fact) # Fato i começa após os fatos anteriores
+
+            clips.append(text_clip_fact) # Adiciona o clipe de texto à lista de clipes
+
+
+        # Combina todos os clipes visuais
+        # Use CompositeVideoClip para sobrepor (fundo + textos)
+        # Ou concatenate_videoclips para clipes que vêm um depois do outro
+        final_video_clip = CompositeVideoClip(clips, size=(W, H)) # Combina o fundo e os textos sobrepostos
+
+
+        # Define o áudio do vídeo final como o áudio gerado anteriormente
+        final_video_clip = final_video_clip.set_audio(audio_clip)
+
+        # Garante que a duração do vídeo final corresponda à duração do áudio
+        final_video_clip = final_video_clip.set_duration(total_duration)
+
+
+        # --- <<<<< FIM DO SEU CÓDIGO DE CRIAÇÃO/EDIÇÃO DE VÍDEO COM MOVIEPY >>>>> ---
+        # Lembre-se de adicionar LOGS BASTANTE DETALHADOS DENTRO DESTE PROCESSO!
+        # Ex: logging.info("MoviePy: Carregando clip de áudio...")
+        # Ex: logging.info("MoviePy: Sincronizando clipes...")
+        # Ex: logging.info("MoviePy: Iniciando a escrita do arquivo de vídeo (renderização)...")
+        # Ex: logging.info(f"MoviePy: Renderizando quadro {i}/{total_quadros}...") # Se puder adicionar um loop de progresso
+
+        # Salva o vídeo final em um arquivo
+        # Use um nome de arquivo único, talvez baseado no timestamp, e em uma pasta de saída
+        timestamp = int(time.time()) # Timestamp atual para nome único
+        output_video_dir = "generated_videos"
+        os.makedirs(output_video_dir, exist_ok=True) # Cria la carpeta si no existe
+        video_output_filename = f"{channel_title.replace(' ', '_').lower()}_{timestamp}_final.mp4"
+        video_output_path = os.path.join(output_video_dir, video_output_filename)
+
+
+        logging.info(f"Escrevendo o archivo de vídeo final para: {video_output_path}. Isso pode levar tempo...")
+        # Use um logger de progresso se moviepy.write_videofile suportar e você configurar
+        final_video_clip.write_videofile(video_output_path,
+                                         codec='libx264', # Codec de vídeo comum e recomendado para MP4
+                                         audio_codec='aac', # Codec de áudio comum e recomendado
+                                         fps=FPS, # Quadros por segundo definidos antes
+                                         threads=4 # Pode ajustar o número de threads para renderização
+                                         # logger='bar' # Descomente se quiser ver uma barra de progresso no log no terminal
+                                        )
+        logging.info("Arquivo de vídeo final escrito.")
+
+        return video_output_path # Retorna o caminho do arquivo de vídeo final
+
+    except Exception as e:
+        logging.error(f"ERRO durante a criação do vídeo com MoviePy: {e}", exc_info=True)
+        return None
+
+# --- FUNÇÃO DE UPLOAD ---
+# Esta função recebe o caminho do arquivo de vídeo e faz o upload para o YouTube
+# Adaptação baseada no seu script upload_youtube.py
+def upload_video(youtube_service, video_path, title, description, tags, category_id, privacy_status):
+    logging.info(f"--- Iniciando etapa: Upload do vídeo para o YouTube ---")
+    try:
+        # Verifica se o arquivo de vídeo final foi realmente criado e tem conteúdo (tamanho > 0)
+        if not os.path.exists(video_path) or not os.path.getsize(video_path) > 0:
+             logging.error(f"ERRO: Arquivo de vídeo final para upload NÃO encontrado ou está vazio em: {video_path}")
+             return None # Retorna None em caso de erro
+
+        logging.info(f"Preparando upload do arquivo: {video_path}")
+        # Define os metadados do vídeo (título, descrição, tags, categoria, status de privacidade)
+        body= {
+            'snippet': {
+                'title': title,
+                'description': description,
+                'tags': tags,
+                'categoryId': category_id # ID da categoria do YouTube. Ex: '28' para Ciência e Tecnologia. Adapte. Lista de IDs: https://developers.google.com/youtube/v3/docs/videos#snippet.categoryId
+            },
+            'status': {
+                'privacyStatus': privacy_status # 'public', 'unlisted', ou 'private'. Comece com 'private' para testar!
+            }
+            # Opcional: Adicionar 'publisheAt' para agendar o vídeo
+            # 'scheduledStartTime': 'YYYY-MM-DDTHH:MM:SS.0Z' # Use 'publishAt' em vez de 'scheduledStartTime'
         }
-        var planDetails = planService.GetPlanDetails(user.CurrentPlanName) ?? planService.GetDefaultPlan();
-        var cycleStartDate = user.SubscriptionCycleStart == DateTime.MinValue ? new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc) : user.SubscriptionCycleStart; // Garantir UTC
-        var nextCycleStartDate = cycleStartDate.AddMonths(1);
-        var textGenerationsThisCycle = await dbContext.GenerationHistory.CountAsync(h => h.UserId == userId && h.ContentType == "Text" && h.Timestamp >= cycleStartDate && h.Timestamp < nextCycleStartDate);
-        if (textGenerationsThisCycle >= planDetails.TextGenerationsLimit)
-        {
-            logger.LogWarning("[GenerateTest Endpoint] Limite atingido para {UserId} no plano {PlanName}", userId, planDetails.DisplayName);
-            return Results.Json(new { message = $"Você atingiu o limite de {planDetails.TextGenerationsLimit} gerações de texto para este mês no seu plano {planDetails.DisplayName}." }, statusCode: StatusCodes.Status429TooManyRequests);
-        }
-        var modelToUse = string.IsNullOrWhiteSpace(modelName) ? "tinyllama" : modelName;
-        logger.LogInformation("[GenerateTest Endpoint] Usuário {UserId} (Plano: {PlanName}, Usado: {Used}/{Limit} textos) solicitou geração. Prompt: '{Prompt}'", userId, planDetails.DisplayName, textGenerationsThisCycle, planDetails.TextGenerationsLimit, prompt);
-        var generatedText = await generator.GenerateTextAsync(prompt, modelToUse);
-        var historyEntry = new GenerationHistory { UserId = userId, Timestamp = DateTime.UtcNow, ContentType = "Text", InputPrompt = prompt, OutputText = generatedText, ModelUsed = modelToUse };
-        try { dbContext.GenerationHistory.Add(historyEntry); await dbContext.SaveChangesAsync(); } catch (Exception ex) { logger.LogError(ex, "Falha ao salvar histórico texto para {UserId}", userId); }
-        return Results.Ok(new { prompt, model = modelToUse, generatedText, historyId = historyEntry.Id });
-    })
-    .WithName("GenerateTextTest").WithOpenApi().RequireAuthorization();
 
-app.MapGet("/generate-image-test", async (
-    IGeradorImagemService imageGenerator,
-    UserManager<User> userManager,
-    ApplicationDbContext dbContext,
-    Backend.Services.IPlanService planService,
-    ClaimsPrincipal userPrincipal,
-    ILogger<Program> logger,
-    [FromQuery] string prompt,
-    [FromQuery] string style = "digital art"
-    ) => {
-    logger.LogInformation("Executando /generate-image-test...");
-    if (string.IsNullOrWhiteSpace(prompt)) return Results.BadRequest("O parâmetro 'prompt' é obrigatório.");
-    var userId = userManager.GetUserId(userPrincipal);
-    if (userId == null) return Results.Unauthorized();
-    var user = await userManager.Users.FirstOrDefaultAsync(u => u.Id == userId);
-    if (user == null) return Results.NotFound("Usuário não encontrado.");
-    if (string.IsNullOrEmpty(user.CurrentPlanName) || user.SubscriptionCycleStart == default)
-    {
-        user.CurrentPlanName ??= "Free";
-        if (user.SubscriptionCycleStart == default) { user.SubscriptionCycleStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc); } // Garantir UTC
-        await userManager.UpdateAsync(user);
-    }
-    var planDetails = planService.GetPlanDetails(user.CurrentPlanName) ?? planService.GetDefaultPlan();
-    var cycleStartDate = user.SubscriptionCycleStart == DateTime.MinValue ? new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc) : user.SubscriptionCycleStart; // Garantir UTC
-    var nextCycleStartDate = cycleStartDate.AddMonths(1);
-    var thumbnailGenerationsThisCycle = await dbContext.GenerationHistory.CountAsync(h => h.UserId == userId && h.ContentType == "Image" && h.Timestamp >= cycleStartDate && h.Timestamp < nextCycleStartDate);
-    if (thumbnailGenerationsThisCycle >= planDetails.ThumbnailGenerationsLimit)
-    {
-        logger.LogWarning("[GenerateImageTest Endpoint] Limite atingido para {UserId} no plano {PlanName}", userId, planDetails.DisplayName);
-        return Results.Json(new { message = $"Você atingiu o limite de {planDetails.ThumbnailGenerationsLimit} gerações de thumbnail para este mês no seu plano {planDetails.DisplayName}." }, statusCode: StatusCodes.Status429TooManyRequests);
-    }
-    var width = 512; var height = 512;
-    logger.LogInformation("[GenerateImageTest Endpoint] Usuário {UserId} (Plano: {PlanName}, Usado: {Used}/{Limit} thumbnails) solicitou geração. Prompt: '{Prompt}'", userId, planDetails.DisplayName, thumbnailGenerationsThisCycle, planDetails.ThumbnailGenerationsLimit, prompt);
-    var base64Images = await imageGenerator.GenerateImageAsync(prompt, style, width, height);
-    var firstImageBase64 = base64Images.FirstOrDefault();
-    var historyEntry = new GenerationHistory { UserId = userId, Timestamp = DateTime.UtcNow, ContentType = "Image", InputPrompt = prompt, OutputImageBase64 = firstImageBase64, ModelUsed = "black-forest-labs/FLUX.1-dev" };
-    if (!string.IsNullOrEmpty(firstImageBase64)) { try { dbContext.GenerationHistory.Add(historyEntry); await dbContext.SaveChangesAsync(); } catch (Exception ex) { logger.LogError(ex, "Falha ao salvar histórico imagem para {UserId}", userId); } }
-    return Results.Ok(new { prompt, style, width, height, base64Images, historyId = historyEntry.Id > 0 ? historyEntry.Id : (int?)null });
-})
-.WithName("GenerateImageTest").WithOpenApi().RequireAuthorization();
+        # Cria o objeto MediaFileUpload para upload resumível
+        # O upload resumível é recomendado para arquivos maiores ou conexões instáveis
+        media_body = MediaFileUpload(video_path, resumable=True)
 
-app.MapPost("/api/auth/register", async (
-    [FromBody] RegisterRequest request,
-    UserManager<User> userManager,
-    ILogger<Program> logger
-    ) =>
-{
-    logger.LogInformation("Executando /api/auth/register para {Email}...", request.Email);
-    if (string.IsNullOrEmpty(request.Email) || string.IsNullOrEmpty(request.Password)) return Results.BadRequest(new { message = "Email e senha são obrigatórios." });
-    var user = new User { UserName = request.Email, Email = request.Email }; // CreatedAt é UTC por padrão
-    var result = await userManager.CreateAsync(user, request.Password);
-    if (result.Succeeded) {
-        logger.LogInformation("Usuário {Email} criado com sucesso. Atualizando plano/ciclo...", user.Email);
-        user.CurrentPlanName = "Free";
-        user.SubscriptionCycleStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc); // UTC
-        var updateResult = await userManager.UpdateAsync(user);
-        if (!updateResult.Succeeded) { logger.LogError("Falha ao atualizar usuário {Email} após registro com plano/ciclo: {Errors}", user.Email, string.Join(", ", updateResult.Errors.Select(e => e.Description))); }
-        else { logger.LogInformation("Usuário {Email} atualizado com plano Free e ciclo.", user.Email); }
-        return Results.Ok(new { message = "Usuário registrado com sucesso!" });
-    }
-    else
-    {
-        logger.LogWarning("Falha no registro para {Email}: {Errors}", request.Email, string.Join(", ", result.Errors.Select(e => e.Description)));
-        return Results.BadRequest(new { errors = result.Errors.Select(e => e.Description) });
-    }
-})
-.WithName("Register").WithOpenApi();
+        logging.info("Chamando youtube.videos().insert() para iniciar o upload...")
+        # Usa o método insert() da API videos().
+        # Define o 'part' como 'snippet,status' para incluir os metadados e o status de privacidade.
+        insert_request = youtube_service.videos().insert(
+            part=','.join(body.keys()), # Partes da requisição (snippet, status)
+            body=body, # Corpo da requisição com metadados do vídeo
+            media_body=media_body # Corpo da mídia (o arquivo de vídeo)
+        )
 
-app.MapPost("/api/auth/login", async (
-    [FromBody] LoginRequest request,
-    UserManager<User> userManager,
-    SignInManager<User> signInManager,
-    IConfiguration configuration,
-    ILogger<Program> logger
-    ) =>
-{
-    logger.LogInformation("[Login Endpoint] Tentativa de login para: {Email}", request.Email);
-    if (string.IsNullOrEmpty(request.Email) || string.IsNullOrEmpty(request.Password)) { logger.LogWarning("[Login Endpoint] Falha: Email ou senha não fornecidos."); return Results.BadRequest(new { message = "Email e senha são obrigatórios." }); }
+        # Execute a requisição de upload. Isso fará o upload real.
+        # Este passo pode levar bastante tempo dependendo do tamanho do vídeo e conexão do runner.
+        logging.info("Executando requisição de upload. Isso pode levar tempo...")
+        # O Google API client suporta upload resumível automaticamente com MediaFileUpload(..., resumable=True).
+        # A chamada execute() gerencia os chunks e o progresso por baixo dos panos.
+        # Se você precisar de um watcher de progresso explícito, a documentação da biblioteca mostra como usar um MediaUploadProgress.
+        response_upload = insert_request.execute() # Executa a requisição HTTP real
+        logging.info("Requisição de upload executada.")
 
-    var user = await userManager.FindByEmailAsync(request.Email);
-    if (user == null) { logger.LogWarning("[Login Endpoint] Falha: Usuário não encontrado para {Email}", request.Email); return Results.Unauthorized(); }
-
-    var result = await signInManager.CheckPasswordSignInAsync(user, request.Password, lockoutOnFailure: true);
-    if (result.Succeeded)
-    {
-        logger.LogInformation("[Login Endpoint] Login bem-sucedido para: {Email}. Gerando token...", user.Email);
-        var authClaims = new List<Claim> { new Claim(ClaimTypes.NameIdentifier, user.Id), new Claim(ClaimTypes.Email, user.Email!), new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()) };
-        var jwtKey = configuration["Jwt:Key"]!; var issuer = configuration["Jwt:Issuer"]!; var audience = configuration["Jwt:Audience"]!;
-        var authSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
-        var token = new JwtSecurityToken(issuer: issuer, audience: audience, expires: DateTime.Now.AddHours(24), claims: authClaims, signingCredentials: new SigningCredentials(authSigningKey, SecurityAlgorithms.HmacSha256));
-        var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
-
-        var responseObject = new LoginResponse { Token = tokenString, Expiration = token.ValidTo, UserId = user.Id, Email = user.Email ?? string.Empty };
-
-        logger.LogInformation("[Login Endpoint] Token gerado (início): {TokenStart}...", tokenString.Substring(0, Math.Min(tokenString.Length, 10)));
-        logger.LogInformation("[Login Endpoint] Objeto de resposta DTO preparado: UserId={UserId}, Email={Email}", responseObject.UserId, responseObject.Email);
-        logger.LogInformation("[Login Endpoint] Retornando Results.Ok com o objeto DTO...");
-
-        return Results.Ok(responseObject); // Usando Results.Ok com o DTO
-    }
-
-    if (result.IsLockedOut) { logger.LogWarning("[Login Endpoint] Falha: Usuário bloqueado: {Email}", user.Email); return Results.StatusCode(StatusCodes.Status423Locked); }
-    if (result.IsNotAllowed) { logger.LogWarning("[Login Endpoint] Falha: Usuário não permitido: {Email}", user.Email); return Results.Unauthorized(); }
-    if (result.RequiresTwoFactor) { logger.LogWarning("[Login Endpoint] Falha: Requer 2FA: {Email}", user.Email); return Results.Unauthorized(); }
-
-    logger.LogWarning("[Login Endpoint] Falha: Credenciais inválidas para {Email}", request.Email);
-    return Results.Unauthorized();
-})
-.WithName("Login").WithOpenApi()
-.Produces<LoginResponse>(StatusCodes.Status200OK)
-.Produces(StatusCodes.Status400BadRequest)
-.Produces(StatusCodes.Status401Unauthorized)
-.Produces(StatusCodes.Status423Locked);
+        # Verifica a resposta do upload
+        video_id = response_upload.get('id')
+        if video_id:
+            logging.info(f"Upload completo. Vídeo ID: {video_id}")
+            # Construa o link correto do YouTube
+            logging.info(f"Link do vídeo (pode não estar ativo imediatamente se for privado): https://youtu.be/{video_id}") # Link correto do YouTube
+            return video_id # Retorna o ID do vídeo se o upload for bem-sucedido
+        else:
+             logging.error("ERRO: Requisição de upload executada, mas a resposta não contém um ID de vídeo.", exc_info=True)
+             return None # Retorna None em caso de falha no upload
 
 
-app.MapGet("/api/history", async (
-    ClaimsPrincipal userPrincipal,
-    UserManager<User> userManager,
-    ApplicationDbContext dbContext,
-    ILogger<Program> logger
-    ) => {
-    logger.LogInformation("Executando /api/history...");
-    var userId = userManager.GetUserId(userPrincipal);
-    if (userId == null) return Results.Unauthorized();
-    var history = await dbContext.GenerationHistory.Where(h => h.UserId == userId).OrderByDescending(h => h.Timestamp)
-        .Select(h => new { h.Id, h.Timestamp, h.ContentType, h.InputPrompt, h.OutputText, OutputImagePreview = h.ContentType == "Image" && !string.IsNullOrEmpty(h.OutputImageBase64) ? "data:image/png;base64,..." : null, h.ModelUsed, h.Language })
-        .ToListAsync();
-    logger.LogInformation("Retornando {Count} registros de histórico para {UserId}", history.Count, userId);
-    return Results.Ok(history);
-})
-.WithName("GetUserHistory").WithOpenApi().RequireAuthorization();
+    except FileNotFoundError:
+        # Captura o erro se o arquivo de vídeo não for encontrado para a MediaFileUpload
+        logging.error(f"ERRO: Arquivo de vídeo final NÃO encontrado em {video_path} para upload.", exc_info=True)
+        return None
+    except Exception as e:
+        # Captura outros erros durante o processo de upload
+        logging.error(f"ERRO: Falha durante o upload do vídeo: {e}", exc_info=True)
+        return None
 
-app.MapGet("/api/dashboard/summary", async (
-    ClaimsPrincipal userPrincipal,
-    UserManager<User> userManager,
-    ApplicationDbContext dbContext,
-    Backend.Services.IPlanService planService,
-    ILogger<Program> logger
-    ) => {
-    logger.LogInformation("Executando /api/dashboard/summary...");
-    var userId = userManager.GetUserId(userPrincipal);
-    if (userId == null) return Results.Unauthorized();
-    var user = await userManager.Users.FirstOrDefaultAsync(u => u.Id == userId);
-    if (user == null) return Results.NotFound("Usuário não encontrado.");
-
-    if (string.IsNullOrEmpty(user.CurrentPlanName) || user.SubscriptionCycleStart == default)
-    {
-        user.CurrentPlanName ??= "Free";
-        if (user.SubscriptionCycleStart == default) { user.SubscriptionCycleStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc); }
-        logger.LogInformation("Atualizando plano/ciclo para usuário {UserId} no dashboard.", userId);
-        await userManager.UpdateAsync(user);
-    }
-
-    var planDetails = planService.GetPlanDetails(user.CurrentPlanName) ?? planService.GetDefaultPlan();
-    var cycleStartDate = user.SubscriptionCycleStart == DateTime.MinValue ? new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc) : user.SubscriptionCycleStart;
-    var nextCycleStartDate = cycleStartDate.AddMonths(1);
-
-    var textGenerationsThisCycle = await dbContext.GenerationHistory.CountAsync(h => h.UserId == userId && h.ContentType == "Text" && h.Timestamp >= cycleStartDate && h.Timestamp < nextCycleStartDate);
-    var thumbnailGenerationsThisCycle = await dbContext.GenerationHistory.CountAsync(h => h.UserId == userId && h.ContentType == "Image" && h.Timestamp >= cycleStartDate && h.Timestamp < nextCycleStartDate);
-    logger.LogInformation("Resumo para {UserId}: Plano={Plan}, Texto={UsedText}/{LimitText}, Thumb={UsedThumb}/{LimitThumb}", userId, planDetails.DisplayName, textGenerationsThisCycle, planDetails.TextGenerationsLimit, thumbnailGenerationsThisCycle, planDetails.ThumbnailGenerationsLimit);
-
-    return Results.Ok(new {
-        PlanName = planDetails.DisplayName,
-        SubscriptionCycleStartDate = cycleStartDate,
-        SubscriptionCycleEndDate = nextCycleStartDate.AddDays(-1),
-        TextGenerationsUsed = textGenerationsThisCycle,
-        TextGenerationsLimit = planDetails.TextGenerationsLimit,
-        TextGenerationsRemaining = Math.Max(0, planDetails.TextGenerationsLimit - textGenerationsThisCycle),
-        ThumbnailGenerationsUsed = thumbnailGenerationsThisCycle,
-        ThumbnailGenerationsLimit = planDetails.ThumbnailGenerationsLimit,
-        ThumbnailGenerationsRemaining = Math.Max(0, planDetails.ThumbnailGenerationsLimit - thumbnailGenerationsThisCycle)
-    });
-})
-.WithName("GetDashboardSummary").WithOpenApi().RequireAuthorization();
-
-app.MapGet("/api/account/details", async (
-    ClaimsPrincipal userPrincipal,
-    UserManager<User> userManager,
-    Backend.Services.IPlanService planService,
-    ILogger<Program> logger
-    ) => {
-    logger.LogInformation("Executando /api/account/details...");
-    var userId = userManager.GetUserId(userPrincipal);
-    if (userId == null) return Results.Unauthorized();
-    var user = await userManager.Users.Include(u => u.GenerationHistory).FirstOrDefaultAsync(u => u.Id == userId); // Exemplo de Include se necessário
-    if (user == null) return Results.NotFound(new { message = "Usuário não encontrado." });
-
-    if (string.IsNullOrEmpty(user.CurrentPlanName) || user.SubscriptionCycleStart == default)
-    {
-        user.CurrentPlanName ??= "Free";
-        if (user.SubscriptionCycleStart == default) { user.SubscriptionCycleStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc); }
-    }
-
-    var planDetails = planService.GetPlanDetails(user.CurrentPlanName) ?? planService.GetDefaultPlan();
-    var cycleStartDate = user.SubscriptionCycleStart == DateTime.MinValue ? new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc) : user.SubscriptionCycleStart;
-    var nextCycleStartDate = cycleStartDate.AddMonths(1);
-
-    string? stripeCustomerId = user.StripeCustomerId;
-    string? stripeSubscriptionId = user.StripeSubscriptionId;
-    logger.LogInformation("Retornando detalhes da conta para {UserId}", userId);
-
-    return Results.Ok(new {
-        user.Email,
-        user.UserName,
-        user.CreatedAt,
-        CurrentPlanDisplayName = planDetails.DisplayName,
-        CurrentPlanInternalName = user.CurrentPlanName,
-        SubscriptionCycleStartDate = cycleStartDate,
-        SubscriptionCycleEndDate = nextCycleStartDate.AddDays(-1),
-        StripeCustomerId = stripeCustomerId,
-        StripeSubscriptionId = stripeSubscriptionId
-    });
-})
-.WithName("GetAccountDetails").WithOpenApi().RequireAuthorization();
-
-app.MapGet("/api/plans", (
-    Backend.Services.IPlanService planService,
-    ILogger<Program> logger
-    ) =>
-{
-    logger.LogInformation("Executando /api/plans...");
-    var allPlans = planService.GetAllPlans();
-    if (allPlans == null || !allPlans.Any())
-    {
-        logger.LogWarning("Nenhum plano encontrado pelo PlanService.");
-        return Results.NotFound(new { message = "Nenhum plano encontrado." });
-    }
-    logger.LogInformation("Retornando {Count} planos.", allPlans.Count());
-    return Results.Ok(allPlans);
-})
-.WithName("GetAvailablePlans").WithOpenApi();
-
-app.MapPost("/api/stripe/create-checkout-session", async (
-    [FromBody] CreateCheckoutSessionRequest request,
-    ClaimsPrincipal userPrincipal,
-    UserManager<User> userManager,
-    IConfiguration configuration,
-    HttpContext httpContext,
-    ILogger<Program> logger
-    ) =>
-{
-    logger.LogInformation("Executando /api/stripe/create-checkout-session...");
-    var userId = userManager.GetUserId(userPrincipal);
-    if (userId == null) return Results.Unauthorized();
-    var user = await userManager.FindByIdAsync(userId);
-    if (user == null) return Results.NotFound("Usuário não encontrado.");
-
-    var frontendBaseUrl = configuration["FrontendBaseUrl"] ?? "http://localhost:3000";
-    var successUrl = $"{frontendBaseUrl}/payment/success?session_id={{CHECKOUT_SESSION_ID}}";
-    var cancelUrl = $"{frontendBaseUrl}/payment/cancel";
-
-    logger.LogInformation("Criando sessão de checkout para Usuário {UserId} e PriceId {PriceId}", userId, request.PriceId);
-    var options = new SessionCreateOptions
-    {
-        PaymentMethodTypes = new List<string> { "card" },
-        LineItems = new List<SessionLineItemOptions> { new SessionLineItemOptions { Price = request.PriceId, Quantity = 1, }, },
-        Mode = "subscription", SuccessUrl = successUrl, CancelUrl = cancelUrl, ClientReferenceId = userId,
-        CustomerEmail = user.Email, // Pré-preencher email
-    };
-
-    try
-    {
-        var service = new SessionService();
-        Session session = await service.CreateAsync(options);
-        logger.LogInformation("Sessão de checkout {SessionId} criada para Usuário {UserId}", session.Id, userId);
-        return Results.Ok(new { sessionId = session.Id });
-    }
-    catch (StripeException e)
-    {
-        logger.LogError(e, "[Stripe Checkout Error] Erro ao criar sessão para Usuário {UserId}: {ErrorMessage}", userId, e.StripeError?.Message ?? e.Message);
-        return Results.Json(new { error = new { message = e.StripeError?.Message ?? e.Message } }, statusCode: StatusCodes.Status400BadRequest);
-    }
-    catch (Exception e)
-    {
-        logger.LogError(e, "[Stripe Checkout Error] Erro inesperado para Usuário {UserId}", userId);
-        return Results.Problem(detail: "Ocorreu um erro inesperado ao processar seu pagamento.", statusCode: StatusCodes.Status500InternalServerError, title: "Erro Interno");
-    }
-})
-.WithName("CreateStripeCheckoutSession").WithOpenApi().RequireAuthorization();
-
-app.MapPost("/api/stripe/webhook", async (
-    HttpRequest request,
-    IConfiguration configuration,
-    IServiceProvider serviceProvider,
-    ILogger<Program> logger
-    ) =>
-{
-    logger.LogInformation("Recebida requisição no endpoint /api/stripe/webhook");
-    var json = await new StreamReader(request.Body).ReadToEndAsync();
-    var webhookSecret = configuration["Stripe:WebhookSecret"];
-
-    if (string.IsNullOrEmpty(webhookSecret))
-    {
-        logger.LogError("Segredo do Webhook do Stripe (Stripe:WebhookSecret) não configurado.");
-        return Results.BadRequest("Webhook secret não configurado.");
-    }
-
-    try
-    {
-        var stripeEvent = EventUtility.ConstructEvent(json, request.Headers["Stripe-Signature"], webhookSecret);
-        logger.LogInformation("[Webhook] Evento verificado e recebido: {EventType} ({EventId})", stripeEvent.Type, stripeEvent.Id);
-
-        await using var scope = serviceProvider.CreateAsyncScope();
-        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
-        var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        var planService = scope.ServiceProvider.GetRequiredService<Backend.Services.IPlanService>();
-
-        switch (stripeEvent.Type)
-        {
-            case Events.CheckoutSessionCompleted:
-                var session = stripeEvent.Data.Object as Session;
-                if (session?.Mode == "subscription" && session.PaymentStatus == "paid")
-                {
-                    logger.LogInformation("[Webhook] Checkout Session Completed para ClientReferenceId: {ClientRefId}, SubscriptionId: {SubId}", session.ClientReferenceId, session.SubscriptionId);
-                    var userId = session.ClientReferenceId;
-                    var stripeSubscriptionId = session.SubscriptionId;
-                    var stripeCustomerId = session.CustomerId;
-
-                    if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(stripeSubscriptionId) || string.IsNullOrEmpty(stripeCustomerId)) { logger.LogError("[Webhook] Dados essenciais faltando na sessão {SessionId}", session.Id); break; }
-                    var user = await userManager.FindByIdAsync(userId);
-                    if (user == null) { logger.LogError("[Webhook] Usuário não encontrado {UserId}", userId); break; }
-
-                    var subscriptionService = new SubscriptionService();
-                    var subscription = await subscriptionService.GetAsync(stripeSubscriptionId);
-                    if (subscription == null || subscription.Items == null || !subscription.Items.Data.Any()) { logger.LogError("[Webhook] Assinatura não encontrada {SubId}", stripeSubscriptionId); break; }
-                    var priceId = subscription.Items.Data[0].Price?.Id;
-                    if (string.IsNullOrEmpty(priceId)) { logger.LogError("[Webhook] PriceId não encontrado na assinatura {SubId}", stripeSubscriptionId); break; }
-
-                    string? newPlanName = null;
-                    var stripePriceIdConfig = configuration.GetSection("Stripe:PriceIds").GetChildren().ToDictionary(x => x.Key, x => x.Value);
-                    foreach(var kvp in stripePriceIdConfig) { if (kvp.Value == priceId) { if (kvp.Key.Contains("Essencial")) newPlanName = "Paid1"; else if (kvp.Key.Contains("Pro")) newPlanName = "Paid2"; break; } }
-
-                    if (string.IsNullOrEmpty(newPlanName)) { logger.LogError("[Webhook] Mapeamento PriceId {PriceId} falhou.", priceId); break; }
-
-                    user.CurrentPlanName = newPlanName;
-                    user.StripeCustomerId = stripeCustomerId;
-                    user.StripeSubscriptionId = stripeSubscriptionId;
-                    user.SubscriptionCycleStart = subscription.CurrentPeriodStart.ToUniversalTime(); // Usar data UTC
-
-                    var updateResult = await userManager.UpdateAsync(user);
-                    if (updateResult.Succeeded) { logger.LogInformation("[Webhook] Usuário {UserId} atualizado para plano {PlanName} (Stripe Sub: {SubId})", userId, newPlanName, stripeSubscriptionId); }
-                    else { logger.LogError("[Webhook] Falha ao atualizar usuário {UserId} com sub {SubId}: {Errors}", userId, stripeSubscriptionId, string.Join(", ", updateResult.Errors.Select(e => e.Description))); }
-                } else { logger.LogInformation("[Webhook] Sessão checkout {SessionId} completada mas não relevante (Modo: {Mode}, Status Pag.: {PaymentStatus})", session?.Id, session?.Mode, session?.PaymentStatus); }
-                break;
-
-            case Events.CustomerSubscriptionUpdated:
-                 var updatedSubscription = stripeEvent.Data.Object as Subscription;
-                 logger.LogInformation("[Webhook] Evento CustomerSubscriptionUpdated recebido para SubId: {SubId}, Status: {Status}, CancelAtPeriodEnd: {CancelEnd}", updatedSubscription?.Id, updatedSubscription?.Status, updatedSubscription?.CancelAtPeriodEnd);
-                 // TODO: Lógica para atualizar plano/status se necessário
-                 break;
-            case Events.CustomerSubscriptionDeleted:
-                 var deletedSubscription = stripeEvent.Data.Object as Subscription;
-                 logger.LogInformation("[Webhook] Evento CustomerSubscriptionDeleted recebido para SubId: {SubId}", deletedSubscription?.Id);
-                 // TODO: Lógica para reverter plano do usuário
-                 break;
-            // TODO: Adicionar InvoicePaymentSucceeded/Failed se necessário
-            default:
-                logger.LogInformation("[Webhook] Evento não tratado: {EventType}", stripeEvent.Type);
-                break;
-        }
-        return Results.Ok();
-    }
-    catch (StripeException e) { logger.LogError(e, "[Webhook] Erro Stripe: {ErrorMessage}", e.Message); return Results.BadRequest("Erro ao processar evento Stripe."); }
-    catch (Exception e) { logger.LogError(e, "[Webhook] Erro inesperado."); return Results.StatusCode(StatusCodes.Status500InternalServerError, "Erro interno."); }
-})
-.WithName("StripeWebhook");
+    # Note: A mensagem de sucesso final do upload já está dentro do try/except acima.
+    # Não precisamos de outra aqui a menos que haja lógica adicional pós-upload.
 
 
-app.Run();
+# Função principal do script
+# Esta função coordena as etapas da automação para um canal específico
+def main(channel_name): # Renomeado para channel_name para clareza
+    logging.info(f"--- Início do script de automação para o canal: {channel_name} ---")
+
+    # Define os caminhos esperados para os arquivos JSON decodificados pelo workflow
+    # Estes arquivos SÃO criados pelo step de decodificação no main.yml
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    credentials_dir = os.path.join(base_dir, 'credentials')
+    config_path = os.path.join(base_dir, 'config', 'channels_config.json') # Caminho para o arquivo de configuração
+
+
+    # --- Carregar Configuração do Canal ---
+    logging.info(f"Carregando configuração do canal de {config_path}...")
+    channel_config = None
+    try:
+        # Garante leitura em UTF-8, crucial para arquivos de configuração
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config_data = json.load(f)
+            # Encontra a configuração para o canal específico pelo nome
+            for channel_data in config_data.get('channels', []):
+                if channel_data.get('name') == channel_name:
+                    channel_config = channel_data
+                    break
+            if channel_config:
+                 logging.info(f"Configuração encontrada para o canal '{channel_name}'.")
+            else:
+                 logging.error(f"ERRO: Configuração NÃO encontrada para o canal '{channel_name}' no arquivo {config_path}.")
+                 sys.exit(1) # Sai se a configuração do canal não for encontrada
+
+    except FileNotFoundError:
+         logging.error(f"ERRO CRÍTICO: Arquivo de configuração NÃO encontrado em {config_path}. Certifique-se de que ele existe.")
+         sys.exit(1)
+    except json.JSONDecodeError:
+         logging.error(f"ERRO CRÍTICO: Erro ao decodificar o arquivo de configuração {config_path}. Verifique a sintaxe JSON.", exc_info=True)
+         sys.exit(1)
+    except Exception as e:
+         logging.error(f"ERRO inesperado ao carregar a configuração do canal: {e}", exc_info=True)
+         sys.exit(1)
+
+
+    # Define caminhos para credenciais com base na configuração do canal carregada
+    # Estes são os nomes dos arquivos .base64 NO REPOSITÓRIO.
+    client_secrets_base64_filename = channel_config.get('client_secret_file')
+    token_base64_filename = channel_config.get('token_file')
+
+    # Verifica se os nomes dos arquivos de credenciais foram encontrados na configuração
+    if not client_secrets_base64_filename:
+        logging.error(f"ERRO CRÍTICO: 'client_secret_file' não especificado para o canal '{channel_name}' em {config_path}.")
+        sys.exit(1)
+    if not token_base64_filename:
+        logging.error(f"ERRO CRÍTICO: 'token_file' não especificado para o canal '{channel_name}' em {config_path}.")
+        sys.exit(1)
+
+    # Define os caminhos completos esperados para os arquivos JSON *decodificados*
+    # que são criados na pasta credentials/ pelo workflow.
+    client_secrets_path = os.path.join(credentials_dir, 'client_secret.json') # Assume que o workflow sempre decodifica para este nome
+    token_path = os.path.join(credentials_dir, 'token.json') # Assume que o workflow sempre decodifica para este nome
+
+
+    # Adiciona verificações para garantir que os arquivos JSON decodificados existem APÓS o step de decodificação do workflow
+    logging.info("Verificando arquivos de credenciais decodificados (client_secret.json e token.json) criados pelo workflow...")
+    if not os.path.exists(client_secrets_path):
+         logging.error(f"ERRO CRÍTICO: Arquivo client_secret.json NÃO encontrado em {client_secrets_path}. Verifique o step 'Decodificar arquivos .base64 do Repositório' no main.yml e o arquivo de entrada {client_secrets_base64_filename} no repositório.")
+         sys.exit(1)
+    if not os.path.exists(token_path):
+        logging.error(f"ERRO CRÍTICO: Arquivo token.json NÃO encontrado em {token_path}. Verifique o step 'Decodificar arquivos .base64 do Repositório' no main.yml e o arquivo de entrada {token_base64_filename} no repositório.")
+        sys.exit(1)
+
+    logging.info("Arquivos de credenciais decodificados encontrados em credentials/.")
+
+
+    # Obtém o serviço do YouTube autenticado passando os caminhos dos arquivos JSON decodificados
+    logging.info("Chamando get_authenticated_service() para autenticar com token.json e client_secrets.json...")
+    youtube = get_authenticated_service(client_secrets_path, token_path)
+    logging.info("Chamada a get_authenticated_service() concluída.")
+
+    # Verifica se a autenticação foi bem-sucedida (se get_authenticated_service retornou um objeto build)
+    if youtube is None:
+        logging.error("Falha final na autenticação do serviço YouTube. Saindo do script.")
+        sys.exit(1)
+
+    logging.info("Serviço do YouTube autenticado com sucesso e pronto para uso da API.")
+
+    # --- INÍCIO DA SEGUNDA PARTE: CRIAÇÃO DE CONTEÚDO E VÍDEO ---
+    # Este bloco agora contém as chamadas para as novas funções de criação/upload
+
+    try:
+        logging.info("--- Iniciando etapa: CRIAÇÃO DE CONTEÚDO, VÍDEO E UPLOAD ---")
+
+        # --- Seu código existente para interagir com a API (buscar canal, uploads, playlists) ---
+        # Este código estava no seu main() original. Mantive os logs e a estrutura.
+        logging.info("Iniciando operações iniciais da API do YouTube (buscar canal, uploads, etc.)...")
+
+        logging.info("Buscando informações do canal (mine=True)...")
+        request_channel = youtube.channels().list(
+            part="snippet,contentDetails,statistics",
+            mine=True
+        )
+        logging.info("Chamando youtube.channels().list().execute()...")
+        response_channel = request_channel.execute()
+        logging.info("youtube.channels().list().execute() concluído.")
+        # logging.info(f"Informações do canal: {response_channel}") # Descomente para debug detalhado da resposta
+
+
+        if not ('items' in response_channel and response_channel['items']):
+             logging.error("ERRO: Não foi possível obter informações do seu canal (mine=True). Verifique as permissões das credenciais.")
+             sys.exit(1)
+
+
+        logging.info("Buscando ID da playlist de uploads...")
+        uploads_playlist_id = response_channel['items'][0]['contentDetails']['relatedPlaylists']['uploads']
+        logging.info(f"ID da playlist de uploads encontrado: {uploads_playlist_id}")
+
+        logging.info("Buscando uploads da playlist...")
+        request_uploads = youtube.playlistItems().list(
+            part="snippet,contentDetails",
+            playlistId=uploads_playlist_id
+        )
+        logging.info("Chamando youtube.playlistItems().list().execute()...")
+        response_uploads = request_uploads.execute()
+        logging.info("youtube.playlistItems().list().execute() concluído.")
+        # logging.info(f"Uploads do canal: {response_uploads}") # Descomente para debug detalhado
+
+        if 'items' in response_uploads and response_uploads['items']:
+            logging.info(f"Encontrados {len(response_uploads['items'])} vídeos na playlist de uploads.")
+            for i, item in enumerate(response_uploads['items']):
+                video_id = item['contentDetails']['videoId']
+                video_title = item['snippet']['title']
+                logging.info(f"Processando vídeo {i+1}: ID={video_id}, Título='{video_title}'")
+        else:
+             logging.info("Nenhum vídeo encontrado na playlist de uploads.")
+
+
+        logging.info("Buscando playlists do canal (mine=True)...")
+        request_playlists = youtube.playlists().list(
+            part="snippet,contentDetails",
+            mine=True
+        )
+        logging.info("Chamando youtube.playlists().list().execute()...")
+        response_playlists = request_playlists.execute()
+        logging.info("youtube.playlists().list().execute() concluído.")
+        # logging.info(f'Playlists do canal: {response_playlists}') # Descomente para debug detalhado
+
+        logging.info("--- Etapa de operações iniciais da API concluída. ---")
+
+        # --- CRIAÇÃO DE CONTEÚDO (texto, áudio, visuais) ---
+
+        logging.info("--- Iniciando etapa: Criação de conteúdo (texto, audio

@@ -67,21 +67,21 @@ def get_authenticated_service(client_secrets_path, token_path):
         logging.info("Credenciais expiradas, tentando atualizar usando refresh token.")
         try:
              # Use InstalledAppFlow para carregar client_secrets e configurar o refresh
-             # É importante carregar o client_secrets aqui para que o objeto creds saiba seu client_id/secret para o refresh.
+             # É importante carregar o client_secrets aquí para que el objeto creds sepa su client_id/secret para el refresh.
              logging.info(f"Carregando client_secrets de {client_secrets_path} para auxiliar o refresh...")
              flow = InstalledAppFlow.from_client_secrets_file(client_secrets_path, SCOPES)
-             # Define as credenciais existentes (com refresh token) no objeto flow
+             # Define las credenciales existentes (con refresh token) en el objeto flow
              flow.credentials = creds
              logging.info("Chamando flow.refresh_credentials()...")
-             # Tenta usar o refresh token para obter um novo access token. Esta llamada es NO INTERACTIVA.
+             # Intenta usar el refresh token para obtener un nuevo access token. Esta llamada es NO INTERACTIVA.
              flow.refresh_credentials()
-             creds = flow.credentials # Atualiza creds com o token de acesso recém-obtido
+             creds = flow.credentials # Actualiza creds con el token de acceso recién obtenido
              logging.info("Token de acesso atualizado com sucesso usando refresh token.")
 
              # Salva as credenciais atualizadas de volta no token.json
              logging.info(f"Salvando token atualizado em {token_path}...")
              with open(token_path, 'w') as token_file:
-                 # Extrai os atributos necessários do objeto Credentials para salvar no JSON
+                 # Extrai los atributos necesarios del objeto Credentials para salvar en el JSON
                  token_data = {
                      'token': creds.token,
                      'refresh_token': creds.refresh_token,
@@ -99,7 +99,7 @@ def get_authenticated_service(client_secrets_path, token_path):
              logging.error(f"ERRO: Arquivo client_secrets.json NÃO encontrado em {client_secrets_path}. Necessário para refresh do token.", exc_info=True)
              creds = None # Falha crítica
         except Exception as e:
-            # Captura erros durante o processo de refresh (ex: refresh token inválido)
+            # Captura errores durante el proceso de refresh (ex: refresh token inválido)
             logging.error(f"ERRO: Falha ao atualizar token de acesso com refresh token: {e}", exc_info=True)
             creds = None # A atualização falhou, credenciais não são válidas
 
@@ -111,15 +111,15 @@ def get_authenticated_service(client_secrets_path, token_path):
          # Caso donde token.json no existe, está vacío/corrompido, o no contenía refresh token válido para el refresh.
          logging.warning("Não foi possível carregar credenciais de token.json E não há refresh token disponível ou válido.")
          logging.error("--- Falha crítica: Necessário executar a autenticação inicial LOCALMENTE (com generate_token.py) para criar/atualizar um token.json válido com refresh token,")
-         logging.error("e garantir que o arquivo canal1_token.json.base64 no repositório (ou Secret TOKEN_BASE64) contenha este token codificado CORRETAMENTE.")
-         return None # Indica falha crítica na autenticação
+         logging.error("e garantir que o arquivo canal1_token.json.base64 no repositório (o Secret TOKEN_BASE64) contenha este token codificado CORRETAMENTE.")
+         return None # Indica falha crítica na autenticación
 
 
     # 3. Verifica si al final del proceso tenemos credenciais válidas
     if not creds or not creds.valid:
          # Este log es alcanzado si todos los intentos fallaron
          logging.error("--- Falha crítica final ao obter credenciais válidas após todas as tentativas. Saindo. ---")
-         return None # Indica falha total na autenticação
+         return None # Indica falha total na autenticación
 
 
     logging.info("--- Autenticação bem-sucedida. Construindo serviço da API do YouTube. ---")
@@ -271,7 +271,7 @@ def create_video_from_content(facts, audio_path, channel_title="Video"):
 
         # --- <<<<< FIM DO SEU CÓDIGO DE CRIAÇÃO/EDIÇÃO DE VÍDEO COM MOVIEPY >>>>> ---
         # Lembre-se de adicionar LOGS BASTANTE DETALHADOS DENTRO DESTE PROCESSO!
-        # Ex: logging.info("MoviePy: Carregando clip de áudio...")
+        # Ex: logging.info("MoviePy: Carregando clip de audio...")
         # Ex: logging.info("MoviePy: Sincronizando clipes...")
         # Ex: logging.info("MoviePy: Iniciando a escrita do arquivo de vídeo (renderização)...")
         # Ex: logging.info(f"MoviePy: Renderizando quadro {i}/{total_quadros}...") # Si puede agregar un ciclo de progreso
@@ -327,7 +327,7 @@ def upload_video(youtube_service, video_path, title, description, tags, category
                 'privacyStatus': privacy_status # 'public', 'unlisted', ou 'private'. Comece com 'private' para testar!
             }
             # Opcional: Adicionar 'publisheAt' para agendar o vídeo
-            # 'scheduledStartTime': 'YYYY-MM-DDTHH:MM:SS.0Z' # Use 'publishAt' em vez de 'scheduledStartTime'
+            # 'scheduledStartTime': 'YYYY-MM-DDTHH:MM:SS.0Z' # Use 'publishAt' en lugar de 'scheduledStartTime'
         }
 
         # Cria el objeto MediaFileUpload para upload resumível

@@ -1,9 +1,9 @@
 name: Automatizar YouTube Video
 
 on:
-  workflow_dispatch: # Permite acionamento manual
+  workflow_dispatch:
   # push:
-  #   branches: [ main ] # Descomente para acionar em push para a main
+  #   branches: [ main ]
 
 jobs:
   build:
@@ -48,52 +48,60 @@ jobs:
               echo "token.json decodificado com sucesso."
             fi
           else
-            echo "AVISO: Arquivo Base64 do token (<span class="math-inline">INPUT\_TOKEN\_BASE64\) NÃO encontrado\. Autenticação Python dependerá do refresh ou falhará\."
-fi
-echo "\-\-\- Fim da decodificação \-\-\-"
-\- name\: Inspecionar client\_secret\.json decodificado
-if\: always\(\) \# Executar mesmo se passos anteriores falharem, para debug
-run\: \|
-echo "\-\-\- Conteúdo de credentials/client\_secret\.json \(Limitado\) \-\-\-"
-if \[ \-f "credentials/client\_secret\.json" \]; then
-head \-c 500 credentials/client\_secret\.json && echo
-else
-echo "Arquivo credentials/client\_secret\.json NÃO encontrado para inspeção\."
-fi
-echo "\-\-\- Fim da inspeção de client\_secret\.json \-\-\-"
-continue\-on\-error\: true
-\- name\: Inspecionar token\.json decodificado
-if\: always\(\) \# Executar mesmo se passos anteriores falharem, para debug
-run\: \|
-echo "\-\-\- Conteúdo de credentials/token\.json \(Limitado\) \-\-\-"
-if \[ \-f "credentials/token\.json" \]; then
-head \-c 500 credentials/token\.json && echo
-else
-echo "Arquivo credentials/token\.json NÃO encontrado para inspeção\."
-fi
-echo "\-\-\- Fim da inspeção de token\.json \-\-\-"
-continue\-on\-error\: true
-\- name\: Configurar Python
-uses\: actions/setup\-python@v4
-with\:
-python\-version\: '3\.9'
-\- name\: Install ImageMagick and Adjust Policy \# PASSO ATUALIZADO
-run\: \|
-echo "Tentando instalar ImageMagick\.\.\."
-sudo apt\-get update \-y
-sudo apt\-get install \-y imagemagick
-echo "Verificando instalação do ImageMagick e caminho do 'convert'\:"
-which convert \|\| echo "'convert' não encontrado no PATH"
-convert \-version \|\| echo "Falha ao executar 'convert \-version'"
-echo "Tentando localizar e modificar policy\.xml do ImageMagick\.\.\."
-POLICY\_XML\_PATH\=</span>(convert -debug configure /dev/null 2>&1 | grep -oP "Searching for configure file:.*/policy.xml" | sed 's/Searching for configure file: //')
+            echo "AVISO: Arquivo Base64 do token ($INPUT_TOKEN_BASE64) NÃO encontrado. Autenticação Python dependerá do refresh ou falhará."
+          fi
+          echo "--- Fim da decodificação ---"
+
+      - name: Inspecionar client_secret.json decodificado
+        if: always()
+        run: |
+          echo "--- Conteúdo de credentials/client_secret.json (Limitado) ---"
+          if [ -f "credentials/client_secret.json" ]; then
+            head -c 500 credentials/client_secret.json && echo
+          else
+            echo "Arquivo credentials/client_secret.json NÃO encontrado para inspeção."
+          fi
+          echo "--- Fim da inspeção de client_secret.json ---"
+        continue-on-error: true
+
+      - name: Inspecionar token.json decodificado
+        if: always()
+        run: |
+          echo "--- Conteúdo de credentials/token.json (Limitado) ---"
+          if [ -f "credentials/token.json" ]; then
+            head -c 500 credentials/token.json && echo
+          else
+            echo "Arquivo credentials/token.json NÃO encontrado para inspeção."
+          fi
+          echo "--- Fim da inspeção de token.json ---"
+        continue-on-error: true
+
+      - name: Configurar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install ImageMagick and Adjust Policy # PASSO COM MODIFICAÇÃO NO LOOP
+        run: |
+          echo "Tentando instalar ImageMagick..."
+          sudo apt-get update -y
+          sudo apt-get install -y imagemagick
+          echo "Verificando instalação do ImageMagick e caminho do 'convert':"
+          which convert || echo "'convert' não encontrado no PATH"
+          convert -version || echo "Falha ao executar 'convert -version'"
           
-          if [ -z "<span class="math-inline">POLICY\_XML\_PATH" \]; then
-\# Fallback para caminhos comuns se a detecção automática falhar
-COMMON\_POLICY\_PATHS\=\("/etc/ImageMagick\-6/policy\.xml" "/etc/ImageMagick/policy\.xml" "/usr/local/etc/ImageMagick\-6/policy\.xml" "/usr/share/ImageMagick\-6/policy\.xml"\)
-for p\_path in "</span>{COMMON_POLICY_PATHS[@]}"; do
+          echo "Tentando localizar e modificar policy.xml do ImageMagick..."
+          POLICY_XML_PATH=$(convert -debug configure /dev/null 2>&1 | grep -oP "Searching for configure file:\s*\K[^']+(?=')" | head -n 1)
+
+          if [ -z "$POLICY_XML_PATH" ] || [ ! -f "$POLICY_XML_PATH" ]; then
+            echo "POLICY_XML_PATH não encontrado ou inválido via 'convert -debug'. Tentando caminhos comuns..."
+            # Fallback para caminhos comuns se a detecção automática falhar
+            _COMMON_POLICY_PATHS_STR="/etc/ImageMagick-6/policy.xml /etc/ImageMagick/policy.xml /usr/local/etc/ImageMagick-6/policy.xml /usr/share/ImageMagick-6/policy.xml"
+            for p_path in $_COMMON_POLICY_PATHS_STR; do # Loop simplificado
+              echo "Verificando fallback: $p_path"
               if [ -f "$p_path" ]; then
                 POLICY_XML_PATH="$p_path"
+                echo "Encontrado policy.xml no fallback: $POLICY_XML_PATH"
                 break
               fi
             done
@@ -101,32 +109,29 @@ for p\_path in "</span>{COMMON_POLICY_PATHS[@]}"; do
 
           if [ -f "$POLICY_XML_PATH" ]; then
             echo "Arquivo policy.xml encontrado em: $POLICY_XML_PATH"
-            sudo cp "<span class="math-inline">POLICY\_XML\_PATH" "</span>{POLICY_XML_PATH}.bak"
+            sudo cp "$POLICY_XML_PATH" "${POLICY_XML_PATH}.bak"
             echo "Backup de policy.xml criado em ${POLICY_XML_PATH}.bak"
             
             echo "Modificando $POLICY_XML_PATH para permitir operações do TextClip..."
-            # Comentar políticas restritivas. Adicionando permissões de leitura/escrita para HTTPS, HTTP, URL, FTP, FILE, MVG, MSL, TEXT, LABEL, PATH.
-            # Isso é bastante permissivo; ajuste se necessário para seu caso de uso específico.
-            # A política que bloqueia '@' é tipicamente a de 'path' ou indiretamente 'TEXT'/'LABEL'.
-            sudo sed -i 's/<policy domain="coder" rights="none" pattern="TEXT" \/>//' "$POLICY_XML_PATH"
-            sudo sed -i 's/<policy domain="coder" rights="none" pattern="LABEL" \/>//' "$POLICY_XML_PATH"
-            sudo sed -i 's/<policy domain="coder" rights="none" pattern="MVG" \/>//' "$POLICY_XML_PATH"
-            sudo sed -i 's/<policy domain="coder" rights="none" pattern="MSL" \/>//' "$POLICY_XML_PATH"
-            sudo sed -i 's/<policy domain="path" rights="none" pattern="@\*" \/>//' "$POLICY_XML_PATH"
-            # Se a política específica de @* não existir, pode ser uma mais genérica:
-            sudo sed -i 's/<policy domain="path" rights="none" pattern="\*"\/>//' "$POLICY_XML_PATH"
-
-            # Opcionalmente, adicionar políticas de leitura explícitas se comentar não for suficiente (mais seguro que rights="read|write")
-            # sudo sed -i '/<\/policymap>/i <policy domain="coder" rights="read" pattern="TEXT" />' "$POLICY_XML_PATH"
-            # sudo sed -i '/<\/policymap>/i <policy domain="coder" rights="read" pattern="LABEL" />' "$POLICY_XML_PATH"
-            # sudo sed -i '/<\/policymap>/i <policy domain="path" rights="read" pattern="@*" />' "$POLICY_XML_PATH"
+            # Comenta políticas restritivas.
+            sudo sed -i.bak 's/<policy domain="coder" rights="none" pattern="TEXT" \/>//g' "$POLICY_XML_PATH"
+            sudo sed -i 's/<policy domain="coder" rights="none" pattern="LABEL" \/>//g' "$POLICY_XML_PATH"
+            sudo sed -i 's/<policy domain="coder" rights="none" pattern="MVG" \/>//g' "$POLICY_XML_PATH"
+            sudo sed -i 's/<policy domain="coder" rights="none" pattern="MSL" \/>//g' "$POLICY_XML_PATH"
+            # A política que bloqueia '@' é tipicamente a de 'path'.
+            sudo sed -i 's/<policy domain="path" rights="none" pattern="@\*"\/>//g' "$POLICY_XML_PATH"
+            # Se a política específica de @* não existir, pode ser uma mais genérica para paths:
+            sudo sed -i 's/<policy domain="path" rights="none" pattern="\*"\/>//g' "$POLICY_XML_PATH"
             
-            echo "Conteúdo de $POLICY_XML_PATH após modificação (linhas relevantes):"
+            echo "Conteúdo de $POLICY_XML_PATH após modificação (linhas relevantes de coder/path):"
             sudo grep -iE 'domain="path"|domain="coder"' "$POLICY_XML_PATH" || echo "Nenhuma política de path/coder encontrada após sed."
           else
             echo "AVISO CRÍTICO: policy.xml do ImageMagick não foi encontrado automaticamente ou nos caminhos comuns. MoviePy TextClip pode falhar."
           fi
           echo "Instalação e ajuste da política do ImageMagick concluídos."
+          echo "Verificando novamente o executável 'convert':"
+          ls -l /usr/bin/convert || echo "'/usr/bin/convert' ainda não existe ou não está acessível."
+
 
       - name: Limpar cache do pip
         run: pip cache purge
@@ -135,6 +140,6 @@ for p\_path in "</span>{COMMON_POLICY_PATHS[@]}"; do
         run: pip install --upgrade -r requirements.txt
 
       - name: Executar Script de Automação
-        run: python -u scripts/main.py --channel "fizzquirk" # Substitua "fizzquirk" se necessário
+        run: python -u scripts/main.py --channel "fizzquirk"
         env:
-          EXAMPLE_SECRET: ${{ secrets.EXAMPLE_SECRET_PARA_TESTE }} # Apenas exemplo, remova se não usar
+          EXAMPLE_SECRET: ${{ secrets.EXAMPLE_SECRET_PARA_TESTE }}

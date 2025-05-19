@@ -1,168 +1,113 @@
-name: Automação YouTube
+name: Automatizar YouTube Video
 
 on:
-  workflow_dispatch:  # Permite execução manual
-  schedule:
-    # Executa automaticamente em horários agendados.
-    # Ajuste a expressão cron conforme sua necessidade de fuso horário e frequência (duas vezes por dia).
-    # A expressão '0 11,23 * * *' executa às 11:00 e 23:00 UTC (corresponde a 8:00 AM e 8:00 PM em BRT, UTC-3).
-    - cron: '0 11,23 * * *'
-    # Verifique o fuso horário que o GitHub Actions usa por padrão (geralmente UTC)
-    # e ajuste a expressão cron para os horários desejados no seu fuso horário local.
+  workflow_dispatch: # Permite acionamento manual
+  # push:
+  #   branches: [ main ] # Descomente para acionar em push para a main
 
 jobs:
   build:
-    runs-on: ubuntu-latest # Usa o ambiente mais recente do Ubuntu
+    runs-on: ubuntu-latest
     steps:
-    - name: Checkout code # Passo para baixar o código do seu repositório
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: Create credentials directory # Passo para criar a pasta onde os arquivos decodificados serão salvos
-      run: |
-        echo "Criando pasta credentials/..."
-        mkdir -p credentials
-        echo "Pasta credentials/ criada."
+      - name: Create credentials directory
+        run: |
+          echo "Criando pasta credentials/..."
+          mkdir -p credentials
+          echo "Pasta credentials/ criada."
 
-    # Passo para decodificar os arquivos Base64 que estão na pasta credentials do seu repositório
-    - name: Decodificar arquivos .base64 do Repositório
-      run: |
-        echo "--- Iniciando decodificação dos arquivos Base64 do Repositório ---"
-        
-        # --- Processar client_secret ---
-        INPUT_CS_BASE64="credentials/canal1_client_secret.json.base64"
-        OUTPUT_CS_JSON="credentials/client_secret.json"
-        
-        echo "Processando client_secret..."
-        # Verifica se o arquivo Base64 de entrada existe
-        if [ -f "$INPUT_CS_BASE64" ]; then
-          echo "Arquivo Base64 de entrada ($INPUT_CS_BASE64) encontrado."
-          echo "Conteúdo bruto do Base64 (primeiros 50 caracteres):"
-          # Exibe o início do arquivo Base64 de entrada no log
-          head -c 50 "$INPUT_CS_BASE64"
-          echo "" # Quebra de linha
+      - name: Decodificar arquivos .base64 do Repositório
+        run: |
+          echo "--- Iniciando decodificação dos arquivos Base64 do Repositório ---"
           
-          # Decodifica o conteúdo Base64 e salva no arquivo JSON de saída
-          openssl base64 -d -in "$INPUT_CS_BASE64" -out "$OUTPUT_CS_JSON"
+          INPUT_CS_BASE64="credentials/canal1_client_secret.json.base64"
+          OUTPUT_CS_JSON="credentials/client_secret.json"
+          if [ -f "$INPUT_CS_BASE64" ]; then
+            echo "Decodificando client_secret de $INPUT_CS_BASE64 para $OUTPUT_CS_JSON..."
+            openssl base64 -d -in "$INPUT_CS_BASE64" -out "$OUTPUT_CS_JSON"
+            if [ $? -ne 0 ] || [ ! -s "$OUTPUT_CS_JSON" ]; then 
+              echo "ERRO CRÍTICO: Falha ao decodificar client_secret ou o arquivo JSON resultante está vazio."
+              exit 1
+            fi
+            echo "client_secret.json decodificado com sucesso."
+          else
+            echo "ERRO CRÍTICO: Arquivo Base64 do client_secret ($INPUT_CS_BASE64) NÃO encontrado."
+            exit 1
+          fi
           
-          # Verifica o código de saída do comando openssl (0 indica sucesso)
-          if [ $? -eq 0 ]; then
-            echo "Comando openssl base64 -d para client_secret executado com sucesso."
-            # Verifica se o arquivo de saída foi criado e tem conteúdo (tamanho maior que zero)
-            if [ -s "$OUTPUT_CS_JSON" ]; then
-              echo "Arquivo de saída ($OUTPUT_CS_JSON) criado com sucesso e não vazio."
+          INPUT_TOKEN_BASE64="credentials/canal1_token.json.base64"
+          OUTPUT_TOKEN_JSON="credentials/token.json"
+          if [ -f "$INPUT_TOKEN_BASE64" ]; then
+            echo "Decodificando token de $INPUT_TOKEN_BASE64 para $OUTPUT_TOKEN_JSON..."
+            openssl base64 -d -in "$INPUT_TOKEN_BASE64" -out "$OUTPUT_TOKEN_JSON"
+            if [ $? -ne 0 ] || [ ! -s "$OUTPUT_TOKEN_JSON" ]; then
+              # AVISO em vez de erro aqui para permitir que o Python tente o refresh,
+              # mas idealmente este arquivo deve ser válido.
+              echo "AVISO: Falha ao decodificar token ou o arquivo JSON resultante está vazio. O script Python tentará o refresh."
+              # Criar um arquivo token.json vazio ou com estrutura mínima pode ser necessário se o Python esperar que ele exista.
+              # No entanto, a lógica atual do Python lida com token.json não existente.
             else
-              # Alerta se o arquivo decodificado está vazio, indicando problema na entrada Base64
-              echo "AVISO: Arquivo de saída ($OUTPUT_CS_JSON) foi criado, mas está vazio! Verifique o conteúdo do arquivo base64 de entrada."
+              echo "token.json decodificado com sucesso."
             fi
           else
-            # Alerta e falha no step se o comando openssl falhar (ex: Base64 inválido)
-            echo "ERRO: Falha na execução do comando openssl base64 -d para client_secret."
-            exit 1 # Falha no step se a decodificação falhar
+            # Se o token.json.base64 não existe, o Python tentará o fluxo completo ou falhará se não conseguir.
+            echo "AVISO: Arquivo Base64 do token ($INPUT_TOKEN_BASE64) NÃO encontrado. Autenticação Python dependerá do refresh ou falhará."
           fi
-        else
-          # Alerta e falha no step se o arquivo Base64 de entrada não for encontrado
-          echo "ERRO: Arquivo Base64 do client_secret NÃO encontrado: $INPUT_CS_BASE64. Certifique-se de que ele está no repositório na pasta credentials/."
-          exit 1 # Falha no step se o arquivo Base64 não existir
-        fi
-        
-        echo "---"
-        
-        # --- Processar token ---
-        INPUT_TOKEN_BASE64="credentials/canal1_token.json.base64"
-        OUTPUT_TOKEN_JSON="credentials/token.json"
-        
-        echo "Processando token..."
-        # Verifica se o arquivo Base64 de entrada existe
-        if [ -f "$INPUT_TOKEN_BASE64" ]; then
-          echo "Arquivo Base64 de entrada ($INPUT_TOKEN_BASE64) encontrado."
-          echo "Conteúdo bruto do Base64 (primeiros 50 caracteres):"
-          # Exibe o início do arquivo Base64 de entrada no log
-          head -c 50 "$INPUT_TOKEN_BASE64"
-          echo "" # Quebra de linha
-          
-          # Decodifica o conteúdo Base64 e salva no arquivo JSON de saída
-          openssl base64 -d -in "$INPUT_TOKEN_BASE64" -out "$OUTPUT_TOKEN_JSON"
-          
-          # Verifica o código de saída do comando openssl
-          if [ $? -eq 0 ]; then
-            echo "Comando openssl base64 -d para token executado com sucesso."
-             # Verifica se o arquivo de saída foi criado e tem conteúdo
-             if [ -s "$OUTPUT_TOKEN_JSON" ]; then
-              echo "Arquivo de saída ($OUTPUT_TOKEN_JSON) criado com sucesso e não vazio."
-            else
-              # Este AVISO é importante - o arquivo token.json não pode estar vazio para autenticar!
-              echo "AVISO CRÍTICO: Arquivo de saída ($OUTPUT_TOKEN_JSON) foi criado, mas está vazio! Verifique o conteúdo do arquivo base64 de entrada. O script Python provavelmente falhará."
-              # Não damos exit 1 aqui para ver o erro subsequente no script Python, que é mais informativo sobre o conteúdo do arquivo.
-            fi
+          echo "--- Fim da decodificação ---"
+
+      - name: Inspecionar client_secret.json decodificado
+        run: |
+          echo "--- Conteúdo de credentials/client_secret.json (Limitado) ---"
+          if [ -f "credentials/client_secret.json" ]; then
+            head -c 500 credentials/client_secret.json
+            echo ""
           else
-            # Este ERRO é importante - falha na decodificação Base64 do token.
-            echo "ERRO: Falha na execução do comando openssl base64 -d para token. Verifique o conteúdo Base64."
-             # Não damos exit 1 aqui para ver o erro subsequente no script Python.
+            echo "Arquivo credentials/client_secret.json NÃO encontrado para inspeção."
           fi
-        else
-          # Este AVISO é importante - o arquivo Base64 do token não foi encontrado no repositório!
-          echo "AVISO CRÍTICO: Arquivo Base64 do token NÃO encontrado: $INPUT_TOKEN_BASE64. O script Python provavelmente falhará."
-          # Não damos exit 1 aqui para ver o erro subsequente no script Python.
-        fi
-        echo "--- Fim da decodificação ---"
+          echo "--- Fim da inspeção de client_secret.json ---"
+        continue-on-error: true # Não falhar o build se este passo de debug falhar
+
+      - name: Inspecionar token.json decodificado
+        run: |
+          echo "--- Conteúdo de credentials/token.json (Limitado) ---"
+          if [ -f "credentials/token.json" ]; then
+            head -c 500 credentials/token.json
+            echo ""
+          else
+            echo "Arquivo credentials/token.json NÃO encontrado para inspeção."
+          fi
+          echo "--- Fim da inspeção de token.json ---"
+        continue-on-error: true # Não falhar o build se este passo de debug falhar
+
+      - name: Configurar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9' # Certifique-se que esta é a versão que você quer
+
+      - name: Install ImageMagick # NOVO PASSO
+        run: |
+          echo "Tentando instalar ImageMagick..."
+          sudo apt-get update -y
+          sudo apt-get install -y imagemagick
+          echo "Verificando instalação do ImageMagick e caminho do 'convert':"
+          which convert || echo "'convert' não encontrado no PATH"
+          convert -version || echo "Falha ao executar 'convert -version'"
+          echo "Listando arquivos em /usr/bin/ para verificar 'convert':"
+          ls -l /usr/bin/convert || echo "'/usr/bin/convert' não existe"
 
 
-    # --- PASSOS DE INSPEÇÃO ---
-    # Estes passos vão imprimir o início e parte do conteúdo dos arquivos decodificados no log
-    # para você verificar se a decodificação foi correta.
-    - name: Inspecionar client_secret.json decodificado
-      run: |
-        echo "--- Conteúdo de credentials/client_secret.json (Primeiros 20 bytes em Hex) ---"
-        # Verifica se o arquivo existe antes de tentar ler
-        if [ -f "credentials/client_secret.json" ]; then
-          head -c 20 credentials/client_secret.json | hexdump -C
-          echo "--- Conteúdo de credentials/client_secret.json (Completo - Limitado a 500 chars) ---"
-          # Limita a saída para não poluir muito o log, mas mostre o início
-          head -c 500 credentials/client_secret.json
-          echo "" # Quebra de linha para clareza
-        else
-          echo "Arquivo credentials/client_secret.json NÃO encontrado para inspeção."
-        fi
-        echo "--- Fim da inspeção de client_secret.json ---"
-      # Use continue-on-error: true para que o workflow não pare aqui, mesmo que a inspeção falhe.
-      # Útil para debug, mas remova em produção se quiser falhar em caso de credenciais inválidas.
-      continue-on-error: true
+      - name: Limpar cache do pip
+        run: pip cache purge
 
-    - name: Inspecionar token.json decodificado
-      run: |
-        echo "--- Conteúdo de credentials/token.json (Primeiros 20 bytes em Hex) ---"
-        # Verifica se o arquivo existe antes de tentar ler
-        if [ -f "credentials/token.json" ]; then
-          head -c 20 credentials/token.json | hexdump -C
-          echo "--- Conteúdo de credentials/token.json (Completo - Limitado a 500 chars) ---"
-          head -c 500 credentials/token.json
-          echo "" # Quebra de linha
-        else
-          echo "Arquivo credentials/token.json NÃO encontrado para inspeção."
-        fi
-        echo "--- Fim da inspeção de token.json ---"
-      continue-on-error: true
+      - name: Instalar dependências
+        run: pip install --upgrade -r requirements.txt
 
-
-    - name: Configurar Python # Configura o ambiente Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9' # Especifica a versão do Python a ser usada
-
-    - name: Limpar cache do pip # Limpa o cache de pacotes do pip (opcional, mas útil)
-      run: pip cache purge
-
-    - name: Instalar dependências # Instala as bibliotecas Python listadas no seu requirements.txt
-      run: pip install --upgrade -r requirements.txt
-
-    # Este passo executará o seu script Python principal
-    # O script espera que os arquivos decodificados estejam em credentials/
-    # É aqui que esperamos ver os logs do script e, potencialmente, um novo ponto de falha/travamento.
-    - name: Executar Script de Automação
-      # A opção -u força a saída do Python para não ser armazenada em buffer,
-      # fazendo com que os logs/prints apareçam mais rapidamente.
-      run: python -u scripts/main.py --channel "fizzquirk"
-
-    # Post steps (executam após o job, mesmo em caso de falha)
-    # Estes passos são adicionados automaticamente por actions usadas (ex: actions/checkout)
-    # e não precisam ser definidos manualmente, a menos que tenha uma necessidade específica.
+      - name: Executar Script de Automação
+        run: python -u scripts/main.py --channel "fizzquirk" # Substitua "fizzquirk" se necessário
+        env:
+          # Se você tiver secrets do GitHub (ex: API keys para outras APIs), pode passá-los como variáveis de ambiente
+          # PYTHONIOENCODING: "UTF-8" # Já deve ser o padrão, mas pode ser explícito se houver problemas de encoding
+          # GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY_SEU_SECRET }}
+          EXAMPLE_SECRET: ${{ secrets.EXAMPLE_SECRET_PARA_TESTE }}

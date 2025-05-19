@@ -57,69 +57,75 @@ def get_authenticated_service(client_secrets_path, token_path):
             logging.warning(f"Não foi possível carregar credenciais de {token_path}: {e}", exc_info=True) # Logar traceback para entender el error de parsing
             creds = None # Garantir que creds seja None si la carga falla
     else:
-         logging.warning(f"Arquivo token.json NÃO encontrado em {token_path}. A autenticação completa pode ser necessária.")
-         # Si token.json no existe, creds permanece None. El siguiente bloque lo maneja.
+        logging.warning(f"Arquivo token.json NÃO encontrado em {token_path}. A autenticação completa pode ser necessária.")
+        # Si token.json no existe, creds permanece None. El siguiente bloque lo maneja.
 
 
     # 2. Si las credenciales fueron cargadas pero están expiradas, intenta refreshar
-    #    Esto acontece si el access token ha expirado.
+    #   Esto acontece si el access token ha expirado.
     if creds and creds.expired and creds.refresh_token:
         logging.info("Credenciais expiradas, tentando atualizar usando refresh token.")
         try:
-             # Use InstalledAppFlow para carregar client_secrets e configurar o refresh
-             # É importante carregar o client_secrets aquí para que el objeto creds sepa su client_id/secret para el refresh.
-             logging.info(f"Carregando client_secrets de {client_secrets_path} para auxiliar o refresh...")
-             flow = InstalledAppFlow.from_client_secrets_file(client_secrets_path, SCOPES)
-             # Define las credenciales existentes (con refresh token) en el objeto flow
-             flow.credentials = creds
-             logging.info("Chamando flow.refresh_credentials()...")
-             # Intenta usar el refresh token para obtener un nuevo access token. Esta llamada es NO INTERACTIVA.
-             flow.refresh_credentials()
-             creds = flow.credentials # Actualiza creds con el token de acceso recién obtenido
-             logging.info("Token de acesso atualizado com sucesso usando refresh token.")
+            # Use InstalledAppFlow para carregar client_secrets e configurar o refresh
+            # É importante carregar o client_secrets aquí para que el objeto creds sepa su client_id/secret para el refresh.
+            logging.info(f"Carregando client_secrets de {client_secrets_path} para auxiliar o refresh...")
+            flow = InstalledAppFlow.from_client_secrets_file(client_secrets_path, SCOPES)
+            # Define las credenciales existentes (con refresh token) en el objeto flow
+            flow.credentials = creds
+            logging.info("Chamando flow.refresh_credentials()...")
+            # Intenta usar el refresh token para obtener un nuevo access token. Esta chamada es NO INTERACTIVA.
+            # A biblioteca tentará usar o refresh_token. Se creds.refresh() estivesse disponível, seria mais direto.
+            # No entanto, flow.refresh_credentials() é a maneira documentada quando se inicia com um flow.
+            # Para que isso funcione corretamente, o objeto 'creds' já deve ter client_id e client_secret,
+            # o que geralmente acontece se ele foi originalmente criado por um flow ou se esses campos foram
+            # explicitamente carregados no token.json.
+            
+            # Tentativa de refresh. Nota: A API do Google Auth pode variar um pouco aqui.
+            # Se creds.refresh(Request()) for o método preferido e funcionar, pode ser usado.
+            # Mas flow.refresh_credentials() é mais robusto se o client_secret estiver apenas no client_secrets.json.
+            creds.refresh(Request()) # Tentativa direta de refresh
+            
+            logging.info("Token de acesso atualizado com sucesso usando refresh token.")
 
-             # Salva as credenciais atualizadas de volta no token.json
-             logging.info(f"Salvando token atualizado em {token_path}...")
-             with open(token_path, 'w') as token_file:
-                 # Extrai los atributos necesarios del objeto Credentials para salvar en el JSON
-                 token_data = {
-                     'token': creds.token,
-                     'refresh_token': creds.refresh_token,
-                     'token_uri': creds.token_uri,
-                     'client_id': creds.client_id,
-                     'client_secret': creds.client_secret,
-                     'scopes': creds.scopes,
-                     'expiry': creds.expiry.isoformat() if creds.expiry else None # Incluir data de expiração
-                 }
-                 json.dump(token_data, token_file, indent=4)
-             logging.info(f"Arquivo {token_path} atualizado com sucesso.")
+            # Salva as credenciais atualizadas de volta no token.json
+            logging.info(f"Salvando token atualizado em {token_path}...")
+            with open(token_path, 'w') as token_file:
+                # Extrai los atributos necesarios del objeto Credentials para salvar en el JSON
+                token_data = {
+                    'token': creds.token,
+                    'refresh_token': creds.refresh_token,
+                    'token_uri': creds.token_uri,
+                    'client_id': creds.client_id,
+                    'client_secret': creds.client_secret, # Pode ser None se não estiver no token original
+                    'scopes': creds.scopes,
+                    'expiry': creds.expiry.isoformat() if creds.expiry else None # Incluir data de expiração
+                }
+                json.dump(token_data, token_file, indent=4)
+            logging.info(f"Arquivo {token_path} atualizado com sucesso.")
 
         except FileNotFoundError:
-             # Este erro não deveria acontecer si el workflow creó client_secrets.json correctamente
-             logging.error(f"ERRO: Arquivo client_secrets.json NÃO encontrado em {client_secrets_path}. Necessário para refresh do token.", exc_info=True)
-             creds = None # Falha crítica
+            # Este erro não deveria acontecer si el workflow creó client_secrets.json correctamente
+            logging.error(f"ERRO: Arquivo client_secrets.json NÃO encontrado em {client_secrets_path}. Necessário para refresh do token.", exc_info=True)
+            creds = None # Falha crítica
         except Exception as e:
             # Captura errores durante el proceso de refresh (ex: refresh token inválido)
             logging.error(f"ERRO: Falha ao atualizar token de acesso com refresh token: {e}", exc_info=True)
             creds = None # A atualização falhou, credenciais não são válidas
 
-    elif creds and not creds.refresh_token:
+    elif creds and not creds.refresh_token and creds.expired: # Adicionado creds.expired aqui
         logging.error("ERRO: Credenciais existentes expiradas, mas SEM refresh token disponível em token.json. Não é possível re-autorizar automaticamente.")
         return None
-
-    else:
-         # Caso donde token.json no existe, está vacío/corrompido, o no contenía refresh token válido para el refresh.
-         logging.warning("Não foi possível carregar credenciais de token.json E não há refresh token disponível ou válido.")
-         logging.error("--- Falha crítica: Necessário executar a autenticação inicial LOCALMENTE (com generate_token.py) para criar/atualizar um token.json válido com refresh token,")
-         logging.error("e garantir que o arquivo canal1_token.json.base64 no repositório (o Secret TOKEN_BASE64) contenha este token codificado CORRETAMENTE.")
-         return None # Indica falha crítica na autenticación
-
+    elif not creds : # Se creds é None desde o início (token.json não existia ou falhou ao carregar)
+        logging.warning("Não foi possível carregar credenciais de token.json.")
+        logging.error("--- Falha crítica: Necessário executar a autenticação inicial LOCALMENTE (com generate_token.py) para criar/atualizar um token.json válido com refresh token,")
+        logging.error("e garantir que o arquivo canal1_token.json.base64 no repositório (o Secret TOKEN_BASE64) contenha este token codificado CORRETAMENTE.")
+        return None # Indica falha crítica na autenticação
 
     # 3. Verifica si al final del proceso tenemos credenciais válidas
     if not creds or not creds.valid:
-         # Este log es alcanzado si todos los intentos fallaron
-         logging.error("--- Falha crítica final ao obter credenciais válidas após todas as tentativas. Saindo. ---")
-         return None # Indica falha total na autenticación
+        # Este log es alcanzado si todos los intentos fallaron o se o token não foi refreshado e está inválido
+        logging.error("--- Falha crítica final ao obter credenciais válidas após todas as tentativas. Saindo. ---")
+        return None # Indica falha total na autenticación
 
 
     logging.info("--- Autenticação bem-sucedida. Construindo serviço da API do YouTube. ---")
@@ -163,7 +169,7 @@ def get_facts_for_video(keywords, num_facts=5):
     else:
         logging.info(f"Gerados {len(facts)} fatos.")
 
-    return facts
+    return facts[:num_facts] # Retorna o número de fatos solicitado
 
 # Função para gerar áudio em inglês a partir de texto usando gTTS
 # Salva o arquivo de áudio em uma pasta temporária
@@ -193,8 +199,8 @@ def create_video_from_content(facts, audio_path, channel_title="Video"):
     try:
         # Carrega o clipe de áudio gerado
         if not os.path.exists(audio_path):
-             logging.error(f"Arquivo de áudio não encontrado: {audio_path}")
-             return None
+            logging.error(f"Arquivo de áudio não encontrado: {audio_path}")
+            return None
 
         audio_clip = AudioFileClip(audio_path)
         total_duration = audio_clip.duration # A duração do vídeo será a do áudio
@@ -204,100 +210,61 @@ def create_video_from_content(facts, audio_path, channel_title="Video"):
         # Adapte-o COMPLETAMENTE ao estilo visual do seu canal (imagens, animações, transições, etc.).
         # Se precisar de imagens/clipes, certifique-se de que foram baixados/gerenciados ANTES desta função e use os caminhos aqui.
 
-        # Exemplo BÁSICO:
         W, H = 1920, 1080 # Resolução Exemplo: Full HD (adapte se necessário)
         FPS = 24 # Quadros por segundo Exemplo: 24 FPS (adapte se necessário)
 
-        # Cria um clipe de fundo (pode ser uma cor sólida, ou carregue uma IMAGEM/VÍDEO BASE aqui)
-        # Ex: background_clip = ColorClip((W, H), color=(0, 0, 0), duration=total_duration) # Fundo preto
-        # Ex: background_clip = ImageClip("caminho/para/imagem_fundo.jpg").set_duration(total_duration).resize(newsize=(W,H)) # Imagem de fundo estática
-        # Ex: background_clip = VideoFileClip("caminho/para/video_base.mp4").subclip(0, total_duration).resize(newsize=(W,H)) # Vídeo de fundo
-
-        # Neste exemplo simples, criaremos clipes de texto individuais para cada fato
-        # e os exibiremos sequencialmente.
-
         clips = [] # Lista para armazenar os clipes de vídeo
-        current_text_time = 0 # Tempo de início do texto atual
 
         # Criar um clipe de fundo para todo o vídeo
         background_clip = ColorClip((W, H), color=(0, 0, 0), duration=total_duration) # Fundo preto
-
         clips.append(background_clip) # Adiciona o fundo como primeiro clipe (base)
-
-        # Exemplo de como mostrar cada fato como texto na tela por uma fração da duração total
-        # Você provavelmente vai querer sincronizar isso mais precisamente com o áudio.
-        # Isso requer analisar o áudio para obter timings de fala ou ter controle sobre a narração.
 
         # Dividir a duração total igualmente entre os fatos para este exemplo simples
         duration_per_fact = total_duration / len(facts) if len(facts) > 0 else total_duration
 
         for i, fact in enumerate(facts):
-            # Cria um TextClip para cada fato
-            # Adapte fonte, tamanho da fonte (fontsize), cor (color), alinhamento (align), etc.
-            # Certifique-se de que a fonte usada está disponível no ambiente do GitHub Actions ou a inclua.
             text_clip_fact = TextClip(fact,
-                                    fontsize=40,
-                                    color='white',
-                                    bg_color='transparent', # Fundo transparente
-                                    size=(W*0.8, None), # Largura da caixa de texto, altura automática
-                                    method='caption',
-                                    align='center', # Alinha o texto ao centro
-                                    stroke_color='black', # Exemplo de contorno
-                                    stroke_width=1)
+                                      fontsize=40,
+                                      color='white',
+                                      bg_color='transparent',
+                                      size=(W*0.8, None), # Largura da caixa de texto, altura automática
+                                      method='caption', # Quebra de linha automática
+                                      align='center',
+                                      stroke_color='black',
+                                      stroke_width=1,
+                                      font='Arial' # Exemplo de fonte, certifique-se que está disponível
+                                     )
 
-            # Define a duração e a posição do clipe de texto do fato
-            # Neste exemplo, cada fato aparece por `duration_per_fact` segundos
-            # Você pode adicionar efeitos (fadeIn, fadeOut) se quiser
             text_clip_fact = text_clip_fact.set_duration(duration_per_fact)
-            text_clip_fact = text_clip_fact.set_position('center') # Centraliza o texto na tela
-            # Define o tempo de início do clipe de texto
-            text_clip_fact = text_clip_fact.set_start(i * duration_per_fact) # Fato i começa após os fatos anteriores
+            text_clip_fact = text_clip_fact.set_position('center')
+            text_clip_fact = text_clip_fact.set_start(i * duration_per_fact)
 
-            clips.append(text_clip_fact) # Adiciona o clipe de texto à lista de clipes
-
-
-        # Combina todos os clipes visuais
-        # Use CompositeVideoClip para sobrepor (fundo + textos)
-        # Ou concatenate_videoclips para clipes que vêm um depois do outro
-        final_video_clip = CompositeVideoClip(clips, size=(W, H)) # Combina o fundo e os textos sobrepostos
+            clips.append(text_clip_fact)
 
 
-        # Define o áudio do vídeo final como o áudio gerado anteriormente
+        final_video_clip = CompositeVideoClip(clips, size=(W, H))
         final_video_clip = final_video_clip.set_audio(audio_clip)
-
-        # Garante que a duração do vídeo final corresponda à duração do áudio
-        final_video_clip = final_video_clip.set_duration(total_duration)
-
+        final_video_clip = final_video_clip.set_duration(total_duration) # Garante a duração correta
 
         # --- <<<<< FIM DO SEU CÓDIGO DE CRIAÇÃO/EDIÇÃO DE VÍDEO COM MOVIEPY >>>>> ---
-        # Lembre-se de adicionar LOGS BASTANTE DETALHADOS DENTRO DESTE PROCESSO!
-        # Ex: logging.info("MoviePy: Carregando clip de audio...")
-        # Ex: logging.info("MoviePy: Sincronizando clipes...")
-        # Ex: logging.info("MoviePy: Iniciando a escrita do arquivo de vídeo (renderização)...")
-        # Ex: logging.info(f"MoviePy: Renderizando quadro {i}/{total_quadros}...") # Si puede agregar un ciclo de progreso
-
-
-        # Salva o vídeo final em un archivo
-        # Use un nombre de archivo único, tal vez basado en el timestamp, y en una carpeta de salida
-        timestamp = int(time.time()) # Timestamp actual para nombre único
+        
+        timestamp = int(time.time())
         output_video_dir = "generated_videos"
-        os.makedirs(output_video_dir, exist_ok=True) # Crea la carpeta si no existe
+        os.makedirs(output_video_dir, exist_ok=True)
         video_output_filename = f"{channel_title.replace(' ', '_').lower()}_{timestamp}_final.mp4"
         video_output_path = os.path.join(output_video_dir, video_output_filename)
 
-
-        logging.info(f"Escrevendo o archivo de vídeo final para: {video_output_path}. Esto puede tardar un tiempo...") # Corregido EOL error aquí y en el log
-        # Use un logger de progreso si moviepy.write_videofile soporta y configura
+        logging.info(f"Escrevendo o arquivo de vídeo final para: {video_output_path}. Isso pode demorar um pouco...")
         final_video_clip.write_videofile(video_output_path,
-                                         codec='libx264', # Codec de vídeo común y recomendado para MP4
-                                         audio_codec='aac', # Codec de audio común y recomendado
-                                         fps=FPS, # Quadros por segundo definidos antes
-                                         threads=4 # Puede ajustar el número de threads para renderización
-                                         # logger='bar' # Descomente si desea ver una barra de progreso en el log en el terminal
+                                         codec='libx264',
+                                         audio_codec='aac',
+                                         fps=FPS,
+                                         threads=4, # Ajuste conforme necessário
+                                         logger='bar' # Mostra uma barra de progresso no console
                                         )
-        logging.info("Archivo de vídeo final escrito.")
+        logging.info("Arquivo de vídeo final escrito.")
 
-        return video_output_path # Retorna el camino del archivo de vídeo final
+        return video_output_path
 
     except Exception as e:
         logging.error(f"ERRO durante a criação do vídeo com MoviePy: {e}", exc_info=True)
@@ -309,81 +276,146 @@ def create_video_from_content(facts, audio_path, channel_title="Video"):
 def upload_video(youtube_service, video_path, title, description, tags, category_id, privacy_status):
     logging.info(f"--- Iniciando etapa: Upload do vídeo para o YouTube ---")
     try:
-        # Verifica si el archivo de vídeo final fue realmente creado y tiene contenido (tamaño > 0)
         if not os.path.exists(video_path) or not os.path.getsize(video_path) > 0:
-             logging.error(f"ERRO: Arquivo de vídeo final para upload NÃO encontrado ou está vazio em: {video_path}")
-             return None # Retorna None en caso de error
+            logging.error(f"ERRO: Arquivo de vídeo final para upload NÃO encontrado ou está vazio em: {video_path}")
+            return None
 
         logging.info(f"Preparando upload do arquivo: {video_path}")
-        # Define los metadados do upload (título, descrição, tags, categoria, status de privacidade)
         body= {
             'snippet': {
                 'title': title,
                 'description': description,
                 'tags': tags,
-                'categoryId': category_id # ID da categoria do YouTube. Ex: '28' para Ciência e Tecnologia. Adapte. Lista de IDs: https://developers.google.com/youtube/v3/docs/videos#snippet.categoryId
+                'categoryId': category_id
             },
             'status': {
-                'privacyStatus': privacy_status # 'public', 'unlisted', ou 'private'. Comece com 'private' para testar!
+                'privacyStatus': privacy_status
             }
-            # Opcional: Adicionar 'publisheAt' para agendar o vídeo
-            # 'scheduledStartTime': 'YYYY-MM-DDTHH:MM:SS.0Z' # Use 'publishAt' en lugar de 'scheduledStartTime'
         }
 
-        # Cria el objeto MediaFileUpload para upload resumível
-        # O upload resumível es recomendado para arquivos maiores ou conexões instáveis
         media_body = MediaFileUpload(video_path, resumable=True)
 
         logging.info("Chamando youtube.videos().insert() para iniciar o upload...")
-        # Usa el método insert() da API videos().
-        # Define el 'part' como 'snippet,status' para incluir los metadados y el status de privacidad.
         insert_request = youtube_service.videos().insert(
-            part=','.join(body.keys()), # Partes da requisição (snippet, status)
-            body=body, # Corpo da requisição com metadados do vídeo
-            media_body=media_body # Corpo da mídia (el arquivo de vídeo)
+            part=','.join(body.keys()),
+            body=body,
+            media_body=media_body
         )
 
-        # Ejecuta la requisición de upload. Esto fará o upload real.
-        # Este passo puede llevar bastante tiempo dependiendo do tamanho do vídeo e conexión do runner.
-        logging.info("Executando requisição de upload. Esto puede tardar un tiempo...") # Corrigido EOL error aquí y en el log
-        # O Google API client suporta upload resumível automaticamente con MediaFileUpload(..., resumable=True).
-        # La llamada execute() gerencia los chunks e el progreso por baixo dos panos.
-        # Si precisa un watcher de progreso explícito, la documentación de la biblioteca muestra como usar un MediaUploadProgress.
-        response_upload = insert_request.execute() # Ejecuta la requisición HTTP real
+        logging.info("Executando requisição de upload. Isso pode demorar um pouco...")
+        response_upload = insert_request.execute()
         logging.info("Requisição de upload executada.")
 
-        # Verifica la respuesta del upload
         video_id = response_upload.get('id')
         if video_id:
             logging.info(f"Upload completo. Vídeo ID: {video_id}")
-            # Construye el link correcto del YouTube
-            logging.info(f"Link do vídeo (puede no estar activo inmediatamente si es privado): https://youtu.be/{video_id}") # Link correto do YouTube
-            return video_id # Retorna el ID del vídeo si el upload fue bem-sucedido
+            logging.info(f"Link do vídeo (pode não estar ativo imediatamente se for privado): https://www.youtube.com/watch?v={video_id}")
+            return video_id
         else:
-             logging.error("ERRO: Requisição de upload executada, mas a resposta não contém um ID de vídeo.", exc_info=True)
-             return None # Retorna None en caso de falha en el upload
-
+            logging.error("ERRO: Requisição de upload executada, mas a resposta não contém um ID de vídeo.", exc_info=True)
+            return None
 
     except FileNotFoundError:
-        # Captura el error si el archivo de vídeo no fue encontrado para la MediaFileUpload
         logging.error(f"ERRO: Arquivo de vídeo final NÃO encontrado em {video_path} para upload.", exc_info=True)
         return None
     except Exception as e:
-        # Captura outros errores durante el proceso de upload
         logging.error(f"ERRO: Falha durante o upload do vídeo: {e}", exc_info=True)
         return None
 
-    # Note: La mensaje de éxito final del upload ya está dentro del try/except arriba.
-    # No necesitamos otra aquí a menos que haya lógica adicional pós-upload.
+# Função principal que orquestra a automação
+def main(channel_name_arg):
+    logging.info(f"--- Iniciando processo de automação para o canal: {channel_name_arg} ---")
 
+    # Caminhos para os arquivos de credenciais
+    # Estes caminhos são relativos à raiz do repositório onde o script é executado no GitHub Actions
+    client_secrets_path = "credentials/client_secret.json"
+    token_path = "credentials/token.json"
 
-# Función principal do script
-# Esta função coordena las etapas da automação para un canal específico
+    # 1. Obter serviço autenticado do YouTube
+    youtube_service = get_authenticated_service(client_secrets_path, token_path)
+
+    if not youtube_service:
+        logging.error("Falha ao obter o serviço autenticado do YouTube. Encerrando o script.")
+        sys.exit(1) # Encerra o script com código de erro
+
+    logging.info("Serviço do YouTube autenticado com sucesso.")
+
+    # 2. Obter/Gerar conteúdo para o vídeo
+    # Adapte esta parte para carregar keywords do seu 'channels_config.json' ou outra fonte
+    # Por enquanto, usando um exemplo genérico.
+    if channel_name_arg == "fizzquirk": # Exemplo de como personalizar por canal
+        video_keywords = ["fizzquirk", "curiosidades gerais", "fatos divertidos"]
+        video_title_template = "Curiosidades Incríveis com FizzQuirk! #{short_id}"
+        video_description_template = "Prepare-se para fatos surpreendentes com FizzQuirk!\n\nNeste vídeo:\n{facts_list}\n\n#FizzQuirk #Curiosidades #Fatos"
+        video_tags_list = ["fizzquirk", "curiosidades", "fatos", "shorts", "youtube shorts"]
+    else: # Configuração padrão ou para outros canais
+        video_keywords = [channel_name_arg, "curiosidades", "fatos interessantes"]
+        video_title_template = f"Vídeo de Curiosidades sobre {channel_name_arg.capitalize()}! #{int(time.time() % 10000)}" # Adiciona um ID curto
+        video_description_template = f"Descubra fatos surpreendentes neste vídeo gerado para o canal {channel_name_arg.capitalize()}.\n\nFatos:\n{{facts_list}}\n\n#{channel_name_arg.capitalize()} #Curiosidades"
+        video_tags_list = [channel_name_arg, "curiosidades", "fatos", "automatizado"]
+    
+    logging.info(f"Keywords para o vídeo: {video_keywords}")
+    facts = get_facts_for_video(keywords=video_keywords, num_facts=3) # Reduzido para 3 fatos para vídeos mais curtos
+
+    if not facts:
+        logging.error("Nenhum fato foi gerado para o vídeo. Encerrando o script.")
+        sys.exit(1)
+
+    facts_for_description = "\n- ".join(facts)
+    full_text_for_audio = ". ".join(facts) # Adiciona ponto final para melhor leitura do TTS
+
+    # 3. Gerar áudio a partir do texto
+    audio_file_name = f"{channel_name_arg.lower()}_{int(time.time())}_audio.mp3"
+    audio_file_path = generate_audio_from_text(text=full_text_for_audio, lang='en', output_filename=audio_file_name)
+
+    if not audio_file_path:
+        logging.error("Falha ao gerar o arquivo de áudio. Encerrando o script.")
+        sys.exit(1)
+
+    # 4. Criar o vídeo
+    video_output_path = create_video_from_content(facts=facts, audio_path=audio_file_path, channel_title=channel_name_arg)
+
+    if not video_output_path:
+        logging.error("Falha ao criar o arquivo de vídeo. Encerrando o script.")
+        sys.exit(1)
+
+    # 5. Fazer upload do vídeo
+    # Prepara os metadados do vídeo
+    final_video_title = video_title_template.format(short_id=int(time.time() % 10000))
+    final_video_description = video_description_template.format(facts_list=facts_for_description)
+    
+    category_id = "28"  # Ciência e Tecnologia. Outros comuns: 22 (Pessoas e Blogs), 24 (Entretenimento)
+    privacy_status = "private"  # MUDE PARA 'public' QUANDO ESTIVER PRONTO PARA PUBLICAR DE VERDADE
+
+    video_id_uploaded = upload_video(youtube_service=youtube_service,
+                                     video_path=video_output_path,
+                                     title=final_video_title,
+                                     description=final_video_description,
+                                     tags=video_tags_list,
+                                     category_id=category_id,
+                                     privacy_status=privacy_status)
+
+    if video_id_uploaded:
+        logging.info(f"--- Processo de automação para o canal {channel_name_arg} concluído com sucesso! ID do Vídeo: {video_id_uploaded} ---")
+        # Limpar arquivos temporários se desejar (opcional)
+        try:
+            if os.path.exists(audio_file_path): os.remove(audio_file_path)
+            # if os.path.exists(video_output_path): os.remove(video_output_path) # Não remova o vídeo final se quiser guardá-lo
+            logging.info("Arquivos temporários de áudio limpos.")
+        except Exception as e:
+            logging.warning(f"Aviso: Não foi possível limpar arquivos temporários: {e}")
+    else:
+        logging.error(f"--- Falha no upload do vídeo para o canal {channel_name_arg}. ---")
+        sys.exit(1)
+
+# --- BLOCO DE EXECUÇÃO PRINCIPAL DO SCRIPT ---
+# Este bloco deve vir DEPOIS da definição da função main e de todas as outras funções.
 if __name__ == "__main__":
     logging.info("Script main.py iniciado via __main__.")
     parser = argparse.ArgumentParser(description="Automatiza o YouTube.")
-    # O argumento --channel es pasado por el main.yml con el nombre del canal (ex: "fizzquirk")
+    # O argumento --channel é passado pelo main.yml com o nome do canal (ex: "fizzquirk")
     parser.add_argument("--channel", required=True, help="Nome do canal a ser automatizado (conforme channels_config.json).")
     args = parser.parse_args()
-    # Llama la función main pasando el nombre del canal
+    
+    # Chama a função main passando o nome do canal
     main(args.channel)

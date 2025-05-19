@@ -286,11 +286,11 @@ def create_video_from_content(facts, audio_path, channel_title="Video"):
         video_output_path = os.path.join(output_video_dir, video_output_filename)
 
 
-        logging.info(f"Escrevendo o archivo de vídeo final para: {video_output_path}. Esto puede tardar un tiempo...") # Corrigido EOL error aquí y en el log
+        logging.info(f"Escrevendo o archivo de vídeo final para: {video_output_path}. Esto puede tardar un tiempo...") # Corregido EOL error aquí y en el log
         # Use un logger de progreso si moviepy.write_videofile soporta y configura
         final_video_clip.write_videofile(video_output_path,
-                                         codec='libx264', # Codec de vídeo comum e recomendado para MP4
-                                         audio_codec='aac', # Codec de áudio comum e recomendado
+                                         codec='libx264', # Codec de vídeo común y recomendado para MP4
+                                         audio_codec='aac', # Codec de audio común y recomendado
                                          fps=FPS, # Quadros por segundo definidos antes
                                          threads=4 # Puede ajustar el número de threads para renderización
                                          # logger='bar' # Descomente si desea ver una barra de progreso en el log en el terminal

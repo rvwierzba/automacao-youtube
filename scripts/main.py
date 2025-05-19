@@ -3,29 +3,28 @@ import argparse
 import logging
 import json
 import sys
-import time # Útil para criar nomes de arquivo únicos baseados no tempo
-from googleapiclient.discovery import build # Para construir o serviço da API do YouTube
-from google_auth_oauthlib.flow import InstalledAppFlow # Necessário para carregar client_secrets
-from google.auth.transport.requests import Request # Para usar Requests com credenciais
-from google.oauth2.credentials import Credentials # Necessário para carregar de token.json
-from googleapiclient.http import MediaFileUpload # Necessário para upload de mídia
+import time
+from googleapiclient.discovery import build
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from googleapiclient.http import MediaFileUpload
 
-# --- Importações Adicionais Necessárias para a Criação de Conteúdo/Vídeo ---
 from gtts import gTTS
 from moviepy.editor import AudioFileClip, TextClip, CompositeVideoClip, ColorClip, ImageClip, VideoFileClip, vfx
+# Importar change_settings e MOVIEPY_CONFIG para inspecionar/alterar configurações do MoviePy
+from moviepy.config import change_settings
+import moviepy.config as MOPY_CONFIG 
 from PIL import Image
 
 
-# Configurar logging
 logging.basicConfig(level=logging.INFO, stream=sys.stdout, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Escopos
 SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
 
 def get_authenticated_service(client_secrets_path, token_path):
     logging.info("--- Tentando obter serviço autenticado ---")
     creds = None
-
     if os.path.exists(token_path):
         try:
             logging.info(f"Tentando carregar credenciais de {token_path} usando from_authorized_user_file...")
@@ -40,63 +39,45 @@ def get_authenticated_service(client_secrets_path, token_path):
     if creds and creds.expired and creds.refresh_token:
         logging.info("Credenciais expiradas, tentando atualizar usando refresh token.")
         try:
-            # Carrega client_id, client_secret e token_uri do client_secrets.json
-            # Estes são autoritativos e necessários para o refresh.
             if not os.path.exists(client_secrets_path):
                 logging.error(f"ERRO CRÍTICO: Arquivo client_secrets.json NÃO encontrado em {client_secrets_path}. Necessário para refresh.")
                 return None
-
             with open(client_secrets_path, 'r') as f:
                 client_secrets_info = json.load(f)
-            
-            # Verifica se a estrutura esperada 'installed' existe
             if 'installed' not in client_secrets_info:
                 logging.error(f"ERRO: Estrutura 'installed' não encontrada em {client_secrets_path}.")
                 return None
-            
             secrets = client_secrets_info['installed']
-
-            # Recria o objeto Credentials com todas as informações necessárias para o refresh.
-            # Isso garante que client_id e client_secret sejam definitivamente do arquivo client_secrets.json.
-            # O refresh_token vem do token.json (que já está em 'creds').
             creds_for_refresh = Credentials(
-                token=None, # Token de acesso atual está expirado, não é necessário aqui
+                token=None,
                 refresh_token=creds.refresh_token,
-                token_uri=secrets.get('token_uri', 'https://oauth2.googleapis.com/token'), # Pega de secrets ou usa um default comum
+                token_uri=secrets.get('token_uri', 'https://oauth2.googleapis.com/token'),
                 client_id=secrets.get('client_id'),
                 client_secret=secrets.get('client_secret'),
-                scopes=creds.scopes # Mantém os escopos originais
+                scopes=creds.scopes
             )
-            
             if not creds_for_refresh.client_id or not creds_for_refresh.client_secret:
                 logging.error("ERRO: client_id ou client_secret não puderam ser obtidos de client_secrets.json.")
                 return None
-
             logging.info(f"Tentando refresh com: client_id={creds_for_refresh.client_id}, client_secret={'***'}, refresh_token={'***' if creds_for_refresh.refresh_token else 'NONE'}, token_uri={creds_for_refresh.token_uri}")
-            
             request_obj = Request()
             creds_for_refresh.refresh(request_obj)
-            
-            # Substitui as credenciais antigas pelas novas, atualizadas
             creds = creds_for_refresh
             logging.info("Token de acesso atualizado com sucesso usando refresh token.")
-
-            # Salva as credenciais atualizadas de volta no token.json
             logging.info(f"Salvando token atualizado em {token_path}...")
             token_data = {
-                'token': creds.token, # Este é o novo token de acesso
-                'refresh_token': creds.refresh_token, # O refresh token geralmente permanece o mesmo
+                'token': creds.token,
+                'refresh_token': creds.refresh_token,
                 'token_uri': creds.token_uri,
                 'client_id': creds.client_id,
-                'client_secret': creds.client_secret, # Agora deve estar populado
+                'client_secret': creds.client_secret,
                 'scopes': creds.scopes,
                 'expiry': creds.expiry.isoformat() if creds.expiry else None
             }
             with open(token_path, 'w') as token_file:
                 json.dump(token_data, token_file, indent=4)
             logging.info(f"Arquivo {token_path} atualizado com sucesso.")
-
-        except FileNotFoundError: # Embora já verificado acima, por segurança
+        except FileNotFoundError:
             logging.error(f"ERRO: Arquivo client_secrets.json NÃO encontrado em {client_secrets_path} durante refresh.", exc_info=True)
             creds = None
         except KeyError as e:
@@ -104,14 +85,12 @@ def get_authenticated_service(client_secrets_path, token_path):
             creds = None
         except Exception as e:
             logging.error(f"ERRO: Falha ao atualizar token de acesso com refresh token: {e}", exc_info=True)
-            creds = None # A atualização falhou
-
-    elif not creds: # Se creds ainda é None (token.json não existia ou falhou ao carregar inicialmente)
+            creds = None
+    elif not creds:
         logging.error("--- Falha crítica: token.json não encontrado ou inválido e não pôde ser carregado.")
         logging.error("Execute a autenticação inicial LOCALMENTE para criar um token.json válido com refresh_token.")
         return None
-
-    elif not creds.valid: # Se creds não é None, mas não é válido (e não pôde ser refreshado)
+    elif not creds.valid:
         logging.error("--- Falha crítica: Credenciais não são válidas e não puderam ser atualizadas (sem refresh token ou refresh falhou).")
         logging.error("Verifique o token.json ou execute a autenticação inicial LOCALMENTE.")
         return None
@@ -125,7 +104,6 @@ def get_authenticated_service(client_secrets_path, token_path):
         logging.error(f"ERRO: Falha ao construir o serviço da API do YouTube: {e}", exc_info=True)
         return None
 
-# --- FUNÇÕES PARA CRIAÇÃO DE CONTEÚDO E VÍDEO (mantidas como na sua versão) ---
 def get_facts_for_video(keywords, num_facts=5):
     logging.info(f"--- Obtendo fatos para o vídeo (Língua: Inglês) ---")
     logging.info(f"Keywords fornecidas: {keywords}")
@@ -159,6 +137,23 @@ def generate_audio_from_text(text, lang='en', output_filename="audio.mp3"):
 
 def create_video_from_content(facts, audio_path, channel_title="Video"):
     logging.info(f"--- Criando vídeo a partir de conteúdo ({len(facts)} fatos) e áudio usando MoviePy ---")
+    
+    # Logar a configuração atual do IMAGEMAGICK_BINARY
+    current_im_binary = MOPY_CONFIG.get_setting("IMAGEMAGICK_BINARY")
+    logging.info(f"MoviePy: IMAGEMAGICK_BINARY atual ANTES da tentativa de configuração: {current_im_binary}")
+
+    # Tentar configurar explicitamente o caminho do ImageMagick
+    # /usr/bin/convert é um caminho comum em sistemas Linux/Ubuntu.
+    imagemagick_path = "/usr/bin/convert" 
+    if os.path.exists(imagemagick_path):
+        try:
+            change_settings({"IMAGEMAGICK_BINARY": imagemagick_path})
+            logging.info(f"MoviePy: IMAGEMAGICK_BINARY configurado explicitamente para: {imagemagick_path}")
+        except Exception as e_conf:
+            logging.warning(f"MoviePy: Não foi possível configurar IMAGEMAGICK_BINARY via change_settings: {e_conf}")
+    else:
+        logging.warning(f"MoviePy: Executável do ImageMagick ('convert') não encontrado em {imagemagick_path}. TextClip pode falhar se o MoviePy não o encontrar automaticamente em outro local.")
+
     try:
         if not os.path.exists(audio_path):
             logging.error(f"Arquivo de áudio não encontrado: {audio_path}")
@@ -180,8 +175,8 @@ def create_video_from_content(facts, audio_path, channel_title="Video"):
                                       method='caption',
                                       align='center',
                                       stroke_color='black',
-                                      stroke_width=1,
-                                      font='Arial'
+                                      stroke_width=1
+                                      # Removido font='Arial' para usar a fonte padrão do ImageMagick
                                      )
             text_clip_fact = text_clip_fact.set_duration(duration_per_fact)
             text_clip_fact = text_clip_fact.set_position('center')
@@ -240,8 +235,7 @@ def upload_video(youtube_service, video_path, title, description, tags, category
         video_id = response_upload.get('id')
         if video_id:
             logging.info(f"Upload completo. Vídeo ID: {video_id}")
-            # Corrigido o link do vídeo para o formato padrão do YouTube
-            logging.info(f"Link do vídeo (pode não estar ativo imediatamente se for privado): https://www.youtube.com/watch?v={video_id}")
+            logging.info(f"Link do vídeo (pode não estar ativo imediatamente se for privado): http://www.youtube.com/watch?v={video_id}")
             return video_id
         else:
             logging.error("ERRO: Requisição de upload executada, mas a resposta não contém um ID de vídeo.", exc_info=True)
@@ -253,7 +247,6 @@ def upload_video(youtube_service, video_path, title, description, tags, category
         logging.error(f"ERRO: Falha durante o upload do vídeo: {e}", exc_info=True)
         return None
 
-# Função principal que orquestra a automação
 def main(channel_name_arg):
     logging.info(f"--- Iniciando processo de automação para o canal: {channel_name_arg} ---")
     client_secrets_path = "credentials/client_secret.json"
@@ -279,7 +272,7 @@ def main(channel_name_arg):
         logging.error("Nenhum fato foi gerado para o vídeo. Encerrando o script.")
         sys.exit(1)
     facts_for_description = "\n- ".join(facts)
-    full_text_for_audio = ". ".join(facts) + "." # Adiciona um ponto final extra para garantir que o TTS termine a frase.
+    full_text_for_audio = ". ".join(facts) + "."
     audio_file_name = f"{channel_name_arg.lower()}_{int(time.time())}_audio.mp3"
     audio_file_path = generate_audio_from_text(text=full_text_for_audio, lang='en', output_filename=audio_file_name)
     if not audio_file_path:
@@ -311,7 +304,6 @@ def main(channel_name_arg):
         logging.error(f"--- Falha no upload do vídeo para o canal {channel_name_arg}. ---")
         sys.exit(1)
 
-# --- BLOCO DE EXECUÇÃO PRINCIPAL DO SCRIPT ---
 if __name__ == "__main__":
     logging.info("Script main.py iniciado via __main__.")
     parser = argparse.ArgumentParser(description="Automatiza o YouTube.")

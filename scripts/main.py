@@ -1,8 +1,8 @@
 import os
 import argparse
-import logging # Mantido para basicConfig
+import logging 
 import json
-import sys # Mantido para sys.exit e sys.stdout/stderr
+import sys 
 import time
 
 # --- Prints de Debug Iniciais ---
@@ -29,7 +29,7 @@ except Exception as e_log_config:
 try:
     print("DEBUG_PRINT: [3] Iniciando importações principais.", flush=True)
     from googleapiclient.discovery import build
-    from google_auth_oauthlib.flow import InstalledAppFlow # Embora não usado diretamente para refresh agora, pode ser útil manter
+    from google_auth_oauthlib.flow import InstalledAppFlow
     from google.auth.transport.requests import Request
     from google.oauth2.credentials import Credentials
     from googleapiclient.http import MediaFileUpload
@@ -42,8 +42,8 @@ try:
     print("DEBUG_PRINT: [3] Importações principais concluídas com sucesso.", flush=True)
 except ImportError as e_import:
     print(f"DEBUG_PRINT_ERROR: [3] ERRO DE IMPORTAÇÃO: {e_import}", flush=True)
-    logging.error(f"ERRO DE IMPORTAÇÃO GRAVE: {e_import}", exc_info=True)
-    sys.exit(1)
+    logging.error(f"ERRO DE IMPORTAÇÃO GRAVE: {e_import}", exc_info=True) 
+    sys.exit(1) 
 
 SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
 
@@ -51,7 +51,6 @@ def get_authenticated_service(client_secrets_path, token_path):
     print("DEBUG_PRINT: [FUNC_AUTH] Entrando em get_authenticated_service.", flush=True)
     logging.info("--- Tentando obter serviço autenticado ---")
     creds = None
-
     if os.path.exists(token_path):
         try:
             logging.info(f"Tentando carregar credenciais de {token_path} usando from_authorized_user_file...")
@@ -201,18 +200,17 @@ def create_video_from_content(facts, audio_path, channel_title="Video"):
         logging.info(f"MoviePy: IMAGEMAGICK_BINARY detectado ANTES da tentativa de configuração: '{current_im_binary}'")
         print(f"DEBUG_PRINT: [FUNC_CREATE_VIDEO] MoviePy IMAGEMAGICK_BINARY ANTES: '{current_im_binary}'", flush=True)
 
-        imagemagick_path = "/usr/bin/convert" # Caminho esperado após 'sudo apt-get install imagemagick'
+        imagemagick_path = "/usr/bin/convert" 
         
         if os.path.exists(imagemagick_path):
             logging.info(f"MoviePy: Executável 'convert' encontrado em '{imagemagick_path}'. Tentando configurar...")
             print(f"DEBUG_PRINT: [FUNC_CREATE_VIDEO] 'convert' encontrado em '{imagemagick_path}'. Configurando...", flush=True)
             change_settings({"IMAGEMAGICK_BINARY": imagemagick_path})
-            # Verifica se a configuração foi aplicada
-            new_im_binary = MOPY_CONFIG.get_setting("IMAGEMAGICK_BINARY")
+            new_im_binary = MOPY_CONFIG.get_setting("IMAGEMAGICK_BINARY") # Verifica novamente após a tentativa de configuração
             logging.info(f"MoviePy: IMAGEMAGICK_BINARY APÓS change_settings: '{new_im_binary}'")
             print(f"DEBUG_PRINT: [FUNC_CREATE_VIDEO] MoviePy IMAGEMAGICK_BINARY APÓS: '{new_im_binary}'", flush=True)
-            if new_im_binary != imagemagick_path:
-                 logging.warning(f"MoviePy: ATENÇÃO! change_settings pode não ter surtido efeito total. IMAGEMAGICK_BINARY ainda é '{new_im_binary}'")
+            if new_im_binary != imagemagick_path: # Adiciona um aviso se a mudança não pegou
+                 logging.warning(f"MoviePy: ATENÇÃO! change_settings pode não ter surtido efeito total. IMAGEMAGICK_BINARY ainda é '{new_im_binary}' e não '{imagemagick_path}'")
                  print(f"DEBUG_PRINT_WARNING: [FUNC_CREATE_VIDEO] change_settings pode não ter funcionado como esperado.", flush=True)
         else:
             logging.warning(f"MoviePy: Executável 'convert' do ImageMagick NÃO encontrado em '{imagemagick_path}'. TextClip pode falhar se MoviePy não o encontrar automaticamente ou se a config padrão for 'unset'.")
@@ -224,11 +222,9 @@ def create_video_from_content(facts, audio_path, channel_title="Video"):
     try:
         print(f"DEBUG_PRINT: [FUNC_CREATE_VIDEO] Verificando existência do arquivo de áudio: {audio_path}", flush=True)
         if not audio_path or not os.path.exists(audio_path) or not os.path.getsize(audio_path) > 0:
-            size = -1
-            exists = False
+            size = -1; exists = False
             if audio_path and os.path.exists(audio_path):
-                size = os.path.getsize(audio_path)
-                exists = True
+                size = os.path.getsize(audio_path); exists = True
             logging.error(f"ERRO CRÍTICO: Arquivo de áudio não encontrado ou está vazio antes de iniciar MoviePy. Caminho: {audio_path}, Existe: {exists}, Tamanho: {size}")
             print(f"DEBUG_PRINT_ERROR: [FUNC_CREATE_VIDEO] Arquivo de áudio não encontrado/vazio. Caminho: {audio_path}, Existe: {exists}, Tamanho: {size}", flush=True)
             return None
@@ -245,7 +241,6 @@ def create_video_from_content(facts, audio_path, channel_title="Video"):
         for i, fact in enumerate(facts):
             print(f"DEBUG_PRINT: [FUNC_CREATE_VIDEO] Criando TextClip para fato {i+1}: '{fact[:30]}...'", flush=True)
             logging.info(f"Criando TextClip para o fato {i+1}: '{fact[:30]}...'")
-            # Simplificado para teste, sem fonte específica, sem stroke
             text_clip_fact = TextClip(fact, fontsize=40, color='white', method='caption', align='center', size=(W*0.8, None))
             text_clip_fact = text_clip_fact.set_duration(duration_per_fact).set_position('center').set_start(i * duration_per_fact)
             clips.append(text_clip_fact)
@@ -266,7 +261,9 @@ def create_video_from_content(facts, audio_path, channel_title="Video"):
     except Exception as e:
         logging.error(f"ERRO durante a criação do vídeo com MoviePy: {e}", exc_info=True)
         print(f"DEBUG_PRINT_ERROR: [FUNC_CREATE_VIDEO] ERRO MoviePy: {e}", flush=True)
-        if "unset" in str(e).lower():
+        if "policy" in str(e).lower() or "not allowed" in str(e).lower():
+             logging.error("DETALHE: O erro parece ser uma política de segurança do ImageMagick. Verifique as modificações no policy.xml no workflow YAML.")
+        elif "unset" in str(e).lower():
             logging.error("DETALHE: O erro contém a palavra 'unset'. Verifique a configuração do IMAGEMAGICK_BINARY do MoviePy e se o ImageMagick está instalado e no PATH do runner.")
         return None
 
@@ -275,11 +272,9 @@ def upload_video(youtube_service, video_path, title, description, tags, category
     logging.info(f"--- Iniciando etapa: Upload do vídeo para o YouTube ---")
     try:
         if not video_path or not os.path.exists(video_path) or not os.path.getsize(video_path) > 0:
-            size = -1
-            exists = False
+            size = -1; exists = False
             if video_path and os.path.exists(video_path):
-                size = os.path.getsize(video_path)
-                exists = True
+                size = os.path.getsize(video_path); exists = True
             logging.error(f"ERRO: Arquivo de vídeo final para upload NÃO encontrado ou está vazio. Caminho: {video_path}, Existe: {exists}, Tamanho: {size}")
             print(f"DEBUG_PRINT_ERROR: [FUNC_UPLOAD_VIDEO] Vídeo não encontrado/vazio. Caminho: {video_path}, Existe: {exists}, Tamanho: {size}", flush=True)
             return None
@@ -290,38 +285,33 @@ def upload_video(youtube_service, video_path, title, description, tags, category
             'snippet': { 'title': title, 'description': description, 'tags': tags, 'categoryId': category_id },
             'status': { 'privacyStatus': privacy_status }
         }
-        media_body = MediaFileUpload(video_path, chunksize=-1, resumable=True) # chunksize=-1 para um único chunk se pequeno, ou deixe resumable gerenciar
+        media_body = MediaFileUpload(video_path, chunksize=-1, resumable=True)
         logging.info("Chamando youtube.videos().insert() para iniciar o upload...")
         print(f"DEBUG_PRINT: [FUNC_UPLOAD_VIDEO] Chamando API para upload...", flush=True)
         insert_request = youtube_service.videos().insert(part=','.join(body.keys()), body=body, media_body=media_body)
         
-        response_upload = None
-        retry_count = 0
-        max_retries = 3
-        while response_upload is None and retry_count < max_retries:
+        response_upload = None; done = False
+        # Loop para upload resumível (simplificado)
+        while not done:
             try:
-                print(f"DEBUG_PRINT: [FUNC_UPLOAD_VIDEO] Tentativa de upload {retry_count + 1}/{max_retries}...", flush=True)
-                logging.info(f"Executando requisição de upload (tentativa {retry_count + 1}). Isso pode demorar...")
-                response_upload, done = insert_request.next_chunk() # Para uploads resumíveis e progresso
-                if done:
-                    logging.info("Upload concluído após next_chunk.")
-                    break # Sai do loop while se 'done' for True
-                if response_upload is not None: # next_chunk pode retornar (None, False)
-                    logging.info(f"Progresso do upload: {int(response_upload.progress() * 100)}%")
-                    print(f"DEBUG_PRINT: [FUNC_UPLOAD_VIDEO] Progresso: {int(response_upload.progress() * 100)}%", flush=True)
+                print(f"DEBUG_PRINT: [FUNC_UPLOAD_VIDEO] Tentando next_chunk()...", flush=True)
+                status, response_upload_chunk = insert_request.next_chunk() # Mudado para status, response
+                if status:
+                    logging.info(f"Progresso do upload: {int(status.progress() * 100)}%")
+                    print(f"DEBUG_PRINT: [FUNC_UPLOAD_VIDEO] Progresso: {int(status.progress() * 100)}%", flush=True)
+                if response_upload_chunk is not None: # O upload está completo quando response_upload_chunk (o corpo da resposta final) não é None
+                    done = True
+                    response_upload = response_upload_chunk # Atribui a resposta final
+                    logging.info("Upload concluído.")
+                    print(f"DEBUG_PRINT: [FUNC_UPLOAD_VIDEO] Upload CONCLUÍDO (response_upload_chunk não é None).", flush=True)
             except Exception as e_upload_chunk:
-                logging.error(f"Erro durante next_chunk na tentativa {retry_count + 1}: {e_upload_chunk}", exc_info=True)
-                print(f"DEBUG_PRINT_ERROR: [FUNC_UPLOAD_VIDEO] Erro no next_chunk {retry_count + 1}: {e_upload_chunk}", flush=True)
-                retry_count += 1
-                if retry_count < max_retries:
-                    time.sleep(5 * retry_count) # Backoff exponencial simples
-                else:
-                    logging.error("Máximo de tentativas de upload atingido.")
-                    return None # Falha após todas as tentativas
+                logging.error(f"Erro durante next_chunk: {e_upload_chunk}", exc_info=True)
+                print(f"DEBUG_PRINT_ERROR: [FUNC_UPLOAD_VIDEO] Erro no next_chunk: {e_upload_chunk}", flush=True)
+                return None # Falha no upload
 
-        if not response_upload or not response_upload.get('id'): # Se 'done' foi true, response_upload é o resultado final.
-            logging.error("ERRO: Requisição de upload executada, mas a resposta final não contém um ID de vídeo ou falhou após retentativas.")
-            print(f"DEBUG_PRINT_ERROR: [FUNC_UPLOAD_VIDEO] Upload falhou ou resposta inválida: {response_upload}", flush=True)
+        if not response_upload or not response_upload.get('id'):
+            logging.error("ERRO: Upload parece ter sido concluído, mas a resposta final não contém um ID de vídeo ou falhou.")
+            print(f"DEBUG_PRINT_ERROR: [FUNC_UPLOAD_VIDEO] Upload falhou ou resposta final inválida: {response_upload}", flush=True)
             return None
 
         video_id = response_upload.get('id')
@@ -330,7 +320,7 @@ def upload_video(youtube_service, video_path, title, description, tags, category
         print(f"DEBUG_PRINT: [FUNC_UPLOAD_VIDEO] Upload OK. Vídeo ID: {video_id}. Saindo.", flush=True)
         return video_id
         
-    except FileNotFoundError: # Deveria ser pego pela verificação inicial, mas por segurança
+    except FileNotFoundError: 
         logging.error(f"ERRO: Arquivo de vídeo final NÃO encontrado em {video_path} para upload.", exc_info=True)
         return None
     except Exception as e:
@@ -431,7 +421,7 @@ if __name__ == "__main__":
     parser.add_argument("--channel", required=True, help="Nome do canal a ser automatizado.")
     
     print(f"DEBUG_PRINT: [MAIN_BLOCK_3] Argumentos crus (sys.argv): {sys.argv}", flush=True)
-    args = None # Inicializa args
+    args = None 
     try:
         args = parser.parse_args()
         print(f"DEBUG_PRINT: [MAIN_BLOCK_4] Argumentos parseados: {args}", flush=True)
@@ -442,16 +432,14 @@ if __name__ == "__main__":
         logging.info("INFO_LOG: [MAIN_BLOCK_7] Execução do __main__ concluída com sucesso (implícito sys.exit(0)).")
 
     except SystemExit as e:
-        # Se o código for 0, significa um sys.exit(0) intencional, não relançar como erro.
-        # Se for diferente de 0, é um erro real.
         if e.code is None or e.code == 0:
             print(f"DEBUG_PRINT: [MAIN_BLOCK_EXIT_0] SystemExit capturado no bloco __main__ com código {e.code}. Considerando sucesso ou saída normal.", flush=True)
             logging.info(f"INFO_LOG: [MAIN_BLOCK_EXIT_0] Script encerrado com sys.exit({e.code}).")
         else:
             print(f"DEBUG_PRINT_ERROR: [MAIN_BLOCK_ERROR] SystemExit capturado no bloco __main__ com código {e.code}. Isso indica uma falha.", flush=True)
-            logging.info(f"INFO_LOG: [MAIN_BLOCK_ERROR] Script encerrado com sys.exit({e.code}).")
-            raise # Re-levanta a SystemExit para que o GitHub Actions veja o código de saída de erro
+            logging.error(f"ERRO_LOG: [MAIN_BLOCK_ERROR] Script encerrado com sys.exit({e.code}).") # Usando logging.error aqui
+            raise 
     except Exception as e_main_block:
-        print(f"DEBUG_PRINT_ERROR: [MAIN_BLOCK_ERROR] Exceção INESPERADA no bloco __main__: {e_main_block}", flush=True)
+        print(f"DEBUG_PRINT_ERROR: [MAIN_BLOCK_ERROR] Exceção INESPERADA no bloco __main__: {type(e_main_block).__name__} - {e_main_block}", flush=True)
         logging.error(f"ERRO GRAVE E INESPERADO NO BLOCO __main__: {e_main_block}", exc_info=True)
         sys.exit(2)

@@ -12,9 +12,8 @@ from googleapiclient.http import MediaFileUpload
 
 from gtts import gTTS
 from moviepy.editor import AudioFileClip, TextClip, CompositeVideoClip, ColorClip, ImageClip, VideoFileClip, vfx
-# Importar change_settings e MOVIEPY_CONFIG para inspecionar/alterar configurações do MoviePy
-from moviepy.config import change_settings
-import moviepy.config as MOPY_CONFIG 
+from moviepy.config import change_settings # Para configurar o MoviePy
+import moviepy.config as MOPY_CONFIG # Para inspecionar configurações do MoviePy
 from PIL import Image
 
 
@@ -138,21 +137,22 @@ def generate_audio_from_text(text, lang='en', output_filename="audio.mp3"):
 def create_video_from_content(facts, audio_path, channel_title="Video"):
     logging.info(f"--- Criando vídeo a partir de conteúdo ({len(facts)} fatos) e áudio usando MoviePy ---")
     
-    # Logar a configuração atual do IMAGEMAGICK_BINARY
-    current_im_binary = MOPY_CONFIG.get_setting("IMAGEMAGICK_BINARY")
-    logging.info(f"MoviePy: IMAGEMAGICK_BINARY atual ANTES da tentativa de configuração: {current_im_binary}")
+    try:
+        current_im_binary = MOPY_CONFIG.get_setting("IMAGEMAGICK_BINARY")
+        logging.info(f"MoviePy: IMAGEMAGICK_BINARY detectado ANTES da tentativa de configuração: '{current_im_binary}'")
 
-    # Tentar configurar explicitamente o caminho do ImageMagick
-    # /usr/bin/convert é um caminho comum em sistemas Linux/Ubuntu.
-    imagemagick_path = "/usr/bin/convert" 
-    if os.path.exists(imagemagick_path):
-        try:
+        imagemagick_path = "/usr/bin/convert" 
+        
+        if os.path.exists(imagemagick_path):
+            logging.info(f"MoviePy: Executável 'convert' encontrado em '{imagemagick_path}'. Tentando configurar...")
             change_settings({"IMAGEMAGICK_BINARY": imagemagick_path})
-            logging.info(f"MoviePy: IMAGEMAGICK_BINARY configurado explicitamente para: {imagemagick_path}")
-        except Exception as e_conf:
-            logging.warning(f"MoviePy: Não foi possível configurar IMAGEMAGICK_BINARY via change_settings: {e_conf}")
-    else:
-        logging.warning(f"MoviePy: Executável do ImageMagick ('convert') não encontrado em {imagemagick_path}. TextClip pode falhar se o MoviePy não o encontrar automaticamente em outro local.")
+            logging.info(f"MoviePy: IMAGEMAGICK_BINARY configurado explicitamente para: '{imagemagick_path}'")
+            new_im_binary = MOPY_CONFIG.get_setting("IMAGEMAGICK_BINARY")
+            logging.info(f"MoviePy: IMAGEMAGICK_BINARY APÓS change_settings: '{new_im_binary}'")
+        else:
+            logging.warning(f"MoviePy: Executável 'convert' do ImageMagick NÃO encontrado em '{imagemagick_path}'. TextClip pode falhar se o MoviePy não encontrar o ImageMagick automaticamente em outro local ou se a configuração padrão for 'unset'.")
+    except Exception as e_conf:
+        logging.warning(f"MoviePy: Exceção ao tentar configurar IMAGEMAGICK_BINARY: {e_conf}")
 
     try:
         if not os.path.exists(audio_path):
@@ -166,42 +166,48 @@ def create_video_from_content(facts, audio_path, channel_title="Video"):
         background_clip = ColorClip((W, H), color=(0, 0, 0), duration=total_duration)
         clips.append(background_clip)
         duration_per_fact = total_duration / len(facts) if len(facts) > 0 else total_duration
+        
         for i, fact in enumerate(facts):
+            logging.info(f"Criando TextClip para o fato {i+1}: '{fact[:30]}...'")
             text_clip_fact = TextClip(fact,
                                       fontsize=40,
                                       color='white',
-                                      bg_color='transparent',
-                                      size=(W*0.8, None),
-                                      method='caption',
-                                      align='center',
-                                      stroke_color='black',
-                                      stroke_width=1
-                                      # Removido font='Arial' para usar a fonte padrão do ImageMagick
+                                      # bg_color='transparent', # Removido para simplificar, pode ser adicionado depois se necessário
+                                      size=(W*0.8, None), 
+                                      method='caption', 
+                                      align='center'
+                                      # font, stroke_color, stroke_width removidos para teste inicial
                                      )
             text_clip_fact = text_clip_fact.set_duration(duration_per_fact)
             text_clip_fact = text_clip_fact.set_position('center')
             text_clip_fact = text_clip_fact.set_start(i * duration_per_fact)
             clips.append(text_clip_fact)
+            
         final_video_clip = CompositeVideoClip(clips, size=(W, H))
         final_video_clip = final_video_clip.set_audio(audio_clip)
         final_video_clip = final_video_clip.set_duration(total_duration)
+        
         timestamp = int(time.time())
         output_video_dir = "generated_videos"
         os.makedirs(output_video_dir, exist_ok=True)
         video_output_filename = f"{channel_title.replace(' ', '_').lower()}_{timestamp}_final.mp4"
         video_output_path = os.path.join(output_video_dir, video_output_filename)
+        
         logging.info(f"Escrevendo o arquivo de vídeo final para: {video_output_path}. Isso pode demorar um pouco...")
         final_video_clip.write_videofile(video_output_path,
                                          codec='libx264',
                                          audio_codec='aac',
                                          fps=FPS,
-                                         threads=4,
-                                         logger='bar'
+                                         threads=4, 
+                                         logger='bar' 
                                         )
         logging.info("Arquivo de vídeo final escrito.")
         return video_output_path
+        
     except Exception as e:
         logging.error(f"ERRO durante a criação do vídeo com MoviePy: {e}", exc_info=True)
+        if "unset" in str(e).lower(): # Checa por 'unset' no erro de forma case-insensitive
+            logging.error("DETALHE: O erro contém a palavra 'unset'. Verifique a configuração do IMAGEMAGICK_BINARY do MoviePy e variáveis de ambiente relacionadas no runner.")
         return None
 
 def upload_video(youtube_service, video_path, title, description, tags, category_id, privacy_status):
@@ -235,7 +241,7 @@ def upload_video(youtube_service, video_path, title, description, tags, category
         video_id = response_upload.get('id')
         if video_id:
             logging.info(f"Upload completo. Vídeo ID: {video_id}")
-            logging.info(f"Link do vídeo (pode não estar ativo imediatamente se for privado): http://www.youtube.com/watch?v={video_id}")
+            logging.info(f"Link do vídeo (pode não estar ativo imediatamente se for privado): https://www.youtube.com/watch?v={video_id}") # Link padrão do YouTube
             return video_id
         else:
             logging.error("ERRO: Requisição de upload executada, mas a resposta não contém um ID de vídeo.", exc_info=True)

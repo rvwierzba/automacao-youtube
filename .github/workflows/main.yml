@@ -43,60 +43,90 @@ jobs:
             echo "Decodificando token de $INPUT_TOKEN_BASE64 para $OUTPUT_TOKEN_JSON..."
             openssl base64 -d -in "$INPUT_TOKEN_BASE64" -out "$OUTPUT_TOKEN_JSON"
             if [ $? -ne 0 ] || [ ! -s "$OUTPUT_TOKEN_JSON" ]; then
-              # AVISO em vez de erro aqui para permitir que o Python tente o refresh,
-              # mas idealmente este arquivo deve ser válido.
               echo "AVISO: Falha ao decodificar token ou o arquivo JSON resultante está vazio. O script Python tentará o refresh."
-              # Criar um arquivo token.json vazio ou com estrutura mínima pode ser necessário se o Python esperar que ele exista.
-              # No entanto, a lógica atual do Python lida com token.json não existente.
             else
               echo "token.json decodificado com sucesso."
             fi
           else
-            # Se o token.json.base64 não existe, o Python tentará o fluxo completo ou falhará se não conseguir.
-            echo "AVISO: Arquivo Base64 do token ($INPUT_TOKEN_BASE64) NÃO encontrado. Autenticação Python dependerá do refresh ou falhará."
+            echo "AVISO: Arquivo Base64 do token (<span class="math-inline">INPUT\_TOKEN\_BASE64\) NÃO encontrado\. Autenticação Python dependerá do refresh ou falhará\."
+fi
+echo "\-\-\- Fim da decodificação \-\-\-"
+\- name\: Inspecionar client\_secret\.json decodificado
+if\: always\(\) \# Executar mesmo se passos anteriores falharem, para debug
+run\: \|
+echo "\-\-\- Conteúdo de credentials/client\_secret\.json \(Limitado\) \-\-\-"
+if \[ \-f "credentials/client\_secret\.json" \]; then
+head \-c 500 credentials/client\_secret\.json && echo
+else
+echo "Arquivo credentials/client\_secret\.json NÃO encontrado para inspeção\."
+fi
+echo "\-\-\- Fim da inspeção de client\_secret\.json \-\-\-"
+continue\-on\-error\: true
+\- name\: Inspecionar token\.json decodificado
+if\: always\(\) \# Executar mesmo se passos anteriores falharem, para debug
+run\: \|
+echo "\-\-\- Conteúdo de credentials/token\.json \(Limitado\) \-\-\-"
+if \[ \-f "credentials/token\.json" \]; then
+head \-c 500 credentials/token\.json && echo
+else
+echo "Arquivo credentials/token\.json NÃO encontrado para inspeção\."
+fi
+echo "\-\-\- Fim da inspeção de token\.json \-\-\-"
+continue\-on\-error\: true
+\- name\: Configurar Python
+uses\: actions/setup\-python@v4
+with\:
+python\-version\: '3\.9'
+\- name\: Install ImageMagick and Adjust Policy \# PASSO ATUALIZADO
+run\: \|
+echo "Tentando instalar ImageMagick\.\.\."
+sudo apt\-get update \-y
+sudo apt\-get install \-y imagemagick
+echo "Verificando instalação do ImageMagick e caminho do 'convert'\:"
+which convert \|\| echo "'convert' não encontrado no PATH"
+convert \-version \|\| echo "Falha ao executar 'convert \-version'"
+echo "Tentando localizar e modificar policy\.xml do ImageMagick\.\.\."
+POLICY\_XML\_PATH\=</span>(convert -debug configure /dev/null 2>&1 | grep -oP "Searching for configure file:.*/policy.xml" | sed 's/Searching for configure file: //')
+          
+          if [ -z "<span class="math-inline">POLICY\_XML\_PATH" \]; then
+\# Fallback para caminhos comuns se a detecção automática falhar
+COMMON\_POLICY\_PATHS\=\("/etc/ImageMagick\-6/policy\.xml" "/etc/ImageMagick/policy\.xml" "/usr/local/etc/ImageMagick\-6/policy\.xml" "/usr/share/ImageMagick\-6/policy\.xml"\)
+for p\_path in "</span>{COMMON_POLICY_PATHS[@]}"; do
+              if [ -f "$p_path" ]; then
+                POLICY_XML_PATH="$p_path"
+                break
+              fi
+            done
           fi
-          echo "--- Fim da decodificação ---"
 
-      - name: Inspecionar client_secret.json decodificado
-        run: |
-          echo "--- Conteúdo de credentials/client_secret.json (Limitado) ---"
-          if [ -f "credentials/client_secret.json" ]; then
-            head -c 500 credentials/client_secret.json
-            echo ""
+          if [ -f "$POLICY_XML_PATH" ]; then
+            echo "Arquivo policy.xml encontrado em: $POLICY_XML_PATH"
+            sudo cp "<span class="math-inline">POLICY\_XML\_PATH" "</span>{POLICY_XML_PATH}.bak"
+            echo "Backup de policy.xml criado em ${POLICY_XML_PATH}.bak"
+            
+            echo "Modificando $POLICY_XML_PATH para permitir operações do TextClip..."
+            # Comentar políticas restritivas. Adicionando permissões de leitura/escrita para HTTPS, HTTP, URL, FTP, FILE, MVG, MSL, TEXT, LABEL, PATH.
+            # Isso é bastante permissivo; ajuste se necessário para seu caso de uso específico.
+            # A política que bloqueia '@' é tipicamente a de 'path' ou indiretamente 'TEXT'/'LABEL'.
+            sudo sed -i 's/<policy domain="coder" rights="none" pattern="TEXT" \/>//' "$POLICY_XML_PATH"
+            sudo sed -i 's/<policy domain="coder" rights="none" pattern="LABEL" \/>//' "$POLICY_XML_PATH"
+            sudo sed -i 's/<policy domain="coder" rights="none" pattern="MVG" \/>//' "$POLICY_XML_PATH"
+            sudo sed -i 's/<policy domain="coder" rights="none" pattern="MSL" \/>//' "$POLICY_XML_PATH"
+            sudo sed -i 's/<policy domain="path" rights="none" pattern="@\*" \/>//' "$POLICY_XML_PATH"
+            # Se a política específica de @* não existir, pode ser uma mais genérica:
+            sudo sed -i 's/<policy domain="path" rights="none" pattern="\*"\/>//' "$POLICY_XML_PATH"
+
+            # Opcionalmente, adicionar políticas de leitura explícitas se comentar não for suficiente (mais seguro que rights="read|write")
+            # sudo sed -i '/<\/policymap>/i <policy domain="coder" rights="read" pattern="TEXT" />' "$POLICY_XML_PATH"
+            # sudo sed -i '/<\/policymap>/i <policy domain="coder" rights="read" pattern="LABEL" />' "$POLICY_XML_PATH"
+            # sudo sed -i '/<\/policymap>/i <policy domain="path" rights="read" pattern="@*" />' "$POLICY_XML_PATH"
+            
+            echo "Conteúdo de $POLICY_XML_PATH após modificação (linhas relevantes):"
+            sudo grep -iE 'domain="path"|domain="coder"' "$POLICY_XML_PATH" || echo "Nenhuma política de path/coder encontrada após sed."
           else
-            echo "Arquivo credentials/client_secret.json NÃO encontrado para inspeção."
+            echo "AVISO CRÍTICO: policy.xml do ImageMagick não foi encontrado automaticamente ou nos caminhos comuns. MoviePy TextClip pode falhar."
           fi
-          echo "--- Fim da inspeção de client_secret.json ---"
-        continue-on-error: true # Não falhar o build se este passo de debug falhar
-
-      - name: Inspecionar token.json decodificado
-        run: |
-          echo "--- Conteúdo de credentials/token.json (Limitado) ---"
-          if [ -f "credentials/token.json" ]; then
-            head -c 500 credentials/token.json
-            echo ""
-          else
-            echo "Arquivo credentials/token.json NÃO encontrado para inspeção."
-          fi
-          echo "--- Fim da inspeção de token.json ---"
-        continue-on-error: true # Não falhar o build se este passo de debug falhar
-
-      - name: Configurar Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.9' # Certifique-se que esta é a versão que você quer
-
-      - name: Install ImageMagick # NOVO PASSO
-        run: |
-          echo "Tentando instalar ImageMagick..."
-          sudo apt-get update -y
-          sudo apt-get install -y imagemagick
-          echo "Verificando instalação do ImageMagick e caminho do 'convert':"
-          which convert || echo "'convert' não encontrado no PATH"
-          convert -version || echo "Falha ao executar 'convert -version'"
-          echo "Listando arquivos em /usr/bin/ para verificar 'convert':"
-          ls -l /usr/bin/convert || echo "'/usr/bin/convert' não existe"
-
+          echo "Instalação e ajuste da política do ImageMagick concluídos."
 
       - name: Limpar cache do pip
         run: pip cache purge
@@ -107,7 +137,4 @@ jobs:
       - name: Executar Script de Automação
         run: python -u scripts/main.py --channel "fizzquirk" # Substitua "fizzquirk" se necessário
         env:
-          # Se você tiver secrets do GitHub (ex: API keys para outras APIs), pode passá-los como variáveis de ambiente
-          # PYTHONIOENCODING: "UTF-8" # Já deve ser o padrão, mas pode ser explícito se houver problemas de encoding
-          # GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY_SEU_SECRET }}
-          EXAMPLE_SECRET: ${{ secrets.EXAMPLE_SECRET_PARA_TESTE }}
+          EXAMPLE_SECRET: ${{ secrets.EXAMPLE_SECRET_PARA_TESTE }} # Apenas exemplo, remova se não usar

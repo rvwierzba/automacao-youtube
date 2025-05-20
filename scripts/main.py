@@ -146,6 +146,7 @@ def get_facts_for_video(keywords, num_facts=5):
     print(f"DEBUG_PRINT: [FUNC_GET_FACTS] Keywords: {keywords}, Num_facts: {num_facts}", flush=True)
     logging.info(f"--- Obtendo fatos para o vídeo (Língua: Inglês) ---")
     logging.info(f"Keywords fornecidas: {keywords}")
+    # EXEMPLO: Substitua pela sua lógica real de obtenção de fatos
     facts = [
         "Did you know that a group of owls is called a parliament? It's a wise gathering!",
         "Honey never spoils. Archaeologists have even found pots of honey in ancient Egyptian tombs that are over 3,000 years old and still edible!",
@@ -206,10 +207,10 @@ def create_video_from_content(facts, audio_path, channel_title="Video"):
             logging.info(f"MoviePy: Executável 'convert' encontrado em '{imagemagick_path}'. Tentando configurar...")
             print(f"DEBUG_PRINT: [FUNC_CREATE_VIDEO] 'convert' encontrado em '{imagemagick_path}'. Configurando...", flush=True)
             change_settings({"IMAGEMAGICK_BINARY": imagemagick_path})
-            new_im_binary = MOPY_CONFIG.get_setting("IMAGEMAGICK_BINARY") # Verifica novamente após a tentativa de configuração
+            new_im_binary = MOPY_CONFIG.get_setting("IMAGEMAGICK_BINARY")
             logging.info(f"MoviePy: IMAGEMAGICK_BINARY APÓS change_settings: '{new_im_binary}'")
             print(f"DEBUG_PRINT: [FUNC_CREATE_VIDEO] MoviePy IMAGEMAGICK_BINARY APÓS: '{new_im_binary}'", flush=True)
-            if new_im_binary != imagemagick_path: # Adiciona um aviso se a mudança não pegou
+            if new_im_binary != imagemagick_path:
                  logging.warning(f"MoviePy: ATENÇÃO! change_settings pode não ter surtido efeito total. IMAGEMAGICK_BINARY ainda é '{new_im_binary}' e não '{imagemagick_path}'")
                  print(f"DEBUG_PRINT_WARNING: [FUNC_CREATE_VIDEO] change_settings pode não ter funcionado como esperado.", flush=True)
         else:
@@ -268,8 +269,8 @@ def create_video_from_content(facts, audio_path, channel_title="Video"):
         return None
 
 def upload_video(youtube_service, video_path, title, description, tags, category_id, privacy_status):
-    print(f"DEBUG_PRINT: [FUNC_UPLOAD_VIDEO] Entrando. Vídeo: {video_path}", flush=True)
-    logging.info(f"--- Iniciando etapa: Upload do vídeo para o YouTube ---")
+    print(f"DEBUG_PRINT: [FUNC_UPLOAD_VIDEO] Entrando. Vídeo: {video_path}, Título: {title}, Privacidade: {privacy_status}", flush=True)
+    logging.info(f"--- Iniciando etapa: Upload do vídeo '{title}' para o YouTube com status '{privacy_status}' ---")
     try:
         if not video_path or not os.path.exists(video_path) or not os.path.getsize(video_path) > 0:
             size = -1; exists = False
@@ -290,33 +291,35 @@ def upload_video(youtube_service, video_path, title, description, tags, category
         print(f"DEBUG_PRINT: [FUNC_UPLOAD_VIDEO] Chamando API para upload...", flush=True)
         insert_request = youtube_service.videos().insert(part=','.join(body.keys()), body=body, media_body=media_body)
         
-        response_upload = None; done = False
-        # Loop para upload resumível (simplificado)
+        response_upload_final = None 
+        done = False
+        
         while not done:
             try:
                 print(f"DEBUG_PRINT: [FUNC_UPLOAD_VIDEO] Tentando next_chunk()...", flush=True)
-                status, response_upload_chunk = insert_request.next_chunk() # Mudado para status, response
+                status, response_chunk = insert_request.next_chunk() 
                 if status:
                     logging.info(f"Progresso do upload: {int(status.progress() * 100)}%")
                     print(f"DEBUG_PRINT: [FUNC_UPLOAD_VIDEO] Progresso: {int(status.progress() * 100)}%", flush=True)
-                if response_upload_chunk is not None: # O upload está completo quando response_upload_chunk (o corpo da resposta final) não é None
+                if response_chunk is not None: 
                     done = True
-                    response_upload = response_upload_chunk # Atribui a resposta final
-                    logging.info("Upload concluído.")
-                    print(f"DEBUG_PRINT: [FUNC_UPLOAD_VIDEO] Upload CONCLUÍDO (response_upload_chunk não é None).", flush=True)
+                    response_upload_final = response_chunk 
+                    logging.info("Upload concluído (response_chunk não é None).")
+                    print(f"DEBUG_PRINT: [FUNC_UPLOAD_VIDEO] Upload CONCLUÍDO (response_chunk não é None).", flush=True)
             except Exception as e_upload_chunk:
                 logging.error(f"Erro durante next_chunk: {e_upload_chunk}", exc_info=True)
                 print(f"DEBUG_PRINT_ERROR: [FUNC_UPLOAD_VIDEO] Erro no next_chunk: {e_upload_chunk}", flush=True)
-                return None # Falha no upload
+                return None 
 
-        if not response_upload or not response_upload.get('id'):
+        if not response_upload_final or not response_upload_final.get('id'):
             logging.error("ERRO: Upload parece ter sido concluído, mas a resposta final não contém um ID de vídeo ou falhou.")
-            print(f"DEBUG_PRINT_ERROR: [FUNC_UPLOAD_VIDEO] Upload falhou ou resposta final inválida: {response_upload}", flush=True)
+            print(f"DEBUG_PRINT_ERROR: [FUNC_UPLOAD_VIDEO] Upload falhou ou resposta final inválida: {response_upload_final}", flush=True)
             return None
 
-        video_id = response_upload.get('id')
+        video_id = response_upload_final.get('id')
         logging.info(f"Upload completo. Vídeo ID: {video_id}")
-        logging.info(f"Link do vídeo (pode não estar ativo imediatamente se for privado): https://www.youtube.com/watch?v={video_id}")
+        # CORRIGIDO o link do vídeo:
+        logging.info(f"Link do vídeo (pode não estar ativo imediatamente se '{privacy_status}'): https://www.youtube.com/watch?v={video_id}")
         print(f"DEBUG_PRINT: [FUNC_UPLOAD_VIDEO] Upload OK. Vídeo ID: {video_id}. Saindo.", flush=True)
         return video_id
         
@@ -387,9 +390,9 @@ def main(channel_name_arg):
     final_video_title = video_title_template.format(short_id=int(time.time() % 10000))
     final_video_description = video_description_template.format(facts_list=facts_for_description)
     category_id = "28"
-    privacy_status = "private"
+    privacy_status = "public"  # <--- ALTERADO PARA PÚBLICO ---
 
-    print(f"DEBUG_PRINT: [4.7] Fazendo upload do vídeo: {final_video_title}", flush=True)
+    print(f"DEBUG_PRINT: [4.7] Fazendo upload do vídeo (PÚBLICO): {final_video_title}", flush=True)
     video_id_uploaded = upload_video(youtube_service=youtube_service,
                                      video_path=video_output_path,
                                      title=final_video_title,
@@ -398,8 +401,8 @@ def main(channel_name_arg):
                                      category_id=category_id,
                                      privacy_status=privacy_status)
     if video_id_uploaded:
-        logging.info(f"--- Processo de automação para o canal {channel_name_arg} concluído com sucesso! ID do Vídeo: {video_id_uploaded} ---")
-        print(f"DEBUG_PRINT: [4.8] SUCESSO! Vídeo ID: {video_id_uploaded}", flush=True)
+        logging.info(f"--- Processo de automação para o canal {channel_name_arg} concluído com sucesso! VÍDEO PÚBLICO ID: {video_id_uploaded} ---")
+        print(f"DEBUG_PRINT: [4.8] SUCESSO! VÍDEO PÚBLICO ID: {video_id_uploaded}", flush=True)
         try:
             if audio_file_path and os.path.exists(audio_file_path): os.remove(audio_file_path)
             logging.info("Arquivos temporários de áudio limpos.")
@@ -437,7 +440,7 @@ if __name__ == "__main__":
             logging.info(f"INFO_LOG: [MAIN_BLOCK_EXIT_0] Script encerrado com sys.exit({e.code}).")
         else:
             print(f"DEBUG_PRINT_ERROR: [MAIN_BLOCK_ERROR] SystemExit capturado no bloco __main__ com código {e.code}. Isso indica uma falha.", flush=True)
-            logging.error(f"ERRO_LOG: [MAIN_BLOCK_ERROR] Script encerrado com sys.exit({e.code}).") # Usando logging.error aqui
+            logging.error(f"ERRO_LOG: [MAIN_BLOCK_ERROR] Script encerrado com sys.exit({e.code}).") 
             raise 
     except Exception as e_main_block:
         print(f"DEBUG_PRINT_ERROR: [MAIN_BLOCK_ERROR] Exceção INESPERADA no bloco __main__: {type(e_main_block).__name__} - {e_main_block}", flush=True)

@@ -1,496 +1,495 @@
 import os
 import argparse
-import logging 
+import logging
 import json
-import sys 
+import sys
 import time
-import random # Importado para seleção aleatória de música
+import random
+from gtts import gTTS
+from moviepy.editor import (AudioFileClip, TextClip, CompositeVideoClip,
+                            ColorClip, ImageClip, CompositeAudioClip,
+                            concatenate_videoclips, concatenate_audioclips)
+from moviepy.config import change_settings
+import moviepy.config as MOPY_CONFIG # Para inspecionar configurações do MoviePy
+from PIL import Image as PILImage, ImageDraw as PILImageDraw, ImageFont as PILImageFont # Para o placeholder de imagem
 
-# --- Prints de Debug Iniciais ---
+from googleapiclient.discovery import build
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from googleapiclient.http import MediaFileUpload
+
+# Tenta importar a biblioteca do Gemini, mas não falha o script inteiro se não estiver lá,
+# pois a função de geração de imagem terá um fallback.
 try:
-    print("DEBUG_PRINT: [1] Script main.py iniciado. Testando stdout.", flush=True)
-    sys.stderr.write("DEBUG_PRINT_STDERR: [1] Script main.py iniciado. Testando stderr.\n")
-    sys.stderr.flush()
-except Exception as e_print_inicial:
-    print(f"DEBUG_PRINT_EXCEPTION: Erro no print inicial: {e_print_inicial}", flush=True)
+    import google.generativeai as genai
+    GEMINI_SDK_AVAILABLE = True
+except ImportError:
+    GEMINI_SDK_AVAILABLE = False
+    logging.warning("Biblioteca google-generativeai não encontrada. Geração de imagem com Gemini estará desabilitada.")
 
-# --- Configuração do Logging ---
-try:
-    logging.basicConfig(level=logging.INFO, stream=sys.stdout, format='%(asctime)s - %(levelname)s - %(message)s')
-    print("DEBUG_PRINT: [2] logging.basicConfig chamado com sucesso.", flush=True)
-    logging.info("TEST_LOG_INFO: Logging configurado.")
-except Exception as e_log_config:
-    print(f"DEBUG_PRINT: [2] ERRO durante logging.basicConfig: {e_log_config}", flush=True)
-    sys.stderr.write(f"DEBUG_PRINT_STDERR: [2] ERRO durante logging.basicConfig: {e_log_config}\n")
-    sys.stderr.flush()
 
-# --- Restante das Importações ---
-try:
-    print("DEBUG_PRINT: [3] Iniciando importações principais.", flush=True)
-    from googleapiclient.discovery import build
-    from google_auth_oauthlib.flow import InstalledAppFlow
-    from google.auth.transport.requests import Request
-    from google.oauth2.credentials import Credentials
-    from googleapiclient.http import MediaFileUpload
-
-    from gtts import gTTS
-    from moviepy.editor import (AudioFileClip, TextClip, CompositeVideoClip, 
-                                ColorClip, ImageClip, CompositeAudioClip) 
-    from moviepy.config import change_settings
-    import moviepy.config as MOPY_CONFIG
-    from PIL import Image 
-    print("DEBUG_PRINT: [3] Importações principais concluídas.", flush=True)
-except ImportError as e_import:
-    print(f"DEBUG_PRINT_ERROR: [3] ERRO DE IMPORTAÇÃO: {e_import}", flush=True)
-    logging.error(f"ERRO DE IMPORTAÇÃO GRAVE: {e_import}", exc_info=True) 
-    sys.exit(1) 
-
+logging.basicConfig(level=logging.INFO, stream=sys.stdout, format='%(asctime)s - %(levelname)s - %(message)s')
 SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
 
 # --- CONFIGURAÇÕES GLOBAIS DOS CANAIS ---
 CHANNEL_CONFIGS = {
-    "fizzquirk": { 
-        "video_title_template": "FizzQuirk Shorts: Fatos Incríveis! #{short_id}", # Exemplo de novo título
-        "video_description_template": "Prepare-se para fatos surpreendentes com FizzQuirk!\n\nNeste vídeo:\n{facts_list}\n\n#FizzQuirk #Curiosidades #Shorts #FatosEngraçados #Aprender",
-        "video_tags_list": ["fizzquirk", "curiosidades", "fatos", "shorts", "youtube shorts", "aprender", "divertido", "incrivel"],
-        "background_image": "assets/backgrounds/fizzquirk_bg.jpg", # CRIE ESTA PASTA E IMAGEM, ou defina como None
-        "music_options": [ 
+    "fizzquirk": {
+        "video_title_template": "FizzQuirk Fact Shorts! #{short_id}",
+        "video_description_template": "Astounding fact of the day by FizzQuirk!\n\nFact:\n{fact_text_for_description}\n\n#FizzQuirk #Shorts #AmazingFacts #Trivia",
+        "video_tags_list": ["fizzquirk", "facts", "trivia", "shorts", "fun facts", "learning"],
+        "music_options": [
             "assets/music/animado.mp3",
             "assets/music/fundo_misterioso.mp3",
             "assets/music/tema_calmo.mp3"
         ],
-        "default_music_if_list_empty": None, # Pode ser um caminho para uma música padrão se a lista estiver vazia
-        "music_volume": 0.07, # Volume da música de fundo (0.0 a 1.0). Experimente valores baixos.
-        "gtts_language": "en", 
-        "text_font_path": "assets/fonts/DejaVuSans-Bold.ttf", # Fonte para o texto. CRIE ESTA PASTA E ADICIONE A FONTE.
-                                                              # Se None ou não encontrado, MoviePy usa um padrão.
-        "fact_keywords": ["general knowledge", "science trivia", "amazing world", "weird facts"], 
-        "num_facts_to_use": 6, # Aumentado para vídeos mais longos
-        "category_id": "28" # Ciência e Tecnologia
+        "default_music_if_list_empty": None, # Pode ser um caminho para uma música padrão
+        "music_volume": 0.07,
+        "gtts_language": "en",
+        "text_font_path_for_image": "assets/fonts/DejaVuSans-Bold.ttf", # Fonte para o texto NA IMAGEM GERADA
+        "num_facts_to_use": 3, # Use 1 para testar a geração de imagem mais rapidamente
+        "duration_per_fact_slide": 5, # Segundos que cada "slide" (imagem + narração do fato) durará
+        "category_id": "27"  # Education
     },
-    "curiosidades_br": { 
-        "video_title_template": "Você Sabia? Curiosidades em Português! #{short_id}",
-        "video_description_template": "Descubra fatos incríveis em português!\n\nNeste vídeo:\n{facts_list}\n\n#CuriosidadesBR #VoceSabia #FatosPT",
+    "curiosidades_br": {
+        "video_title_template": "Você Sabia? #{short_id} Curiosidades em Português!",
+        "video_description_template": "Descubra fatos incríveis em português!\n\nNeste vídeo:\n{fact_text_for_description}\n\n#CuriosidadesBR #VoceSabia #FatosPT",
         "video_tags_list": ["curiosidades", "português", "brasil", "você sabia", "fatos"],
-        "background_image": "assets/backgrounds/curiosidadesbr_bg.png", # CRIE ESTA PASTA E IMAGEM
-        "music_options": [
-            "assets/music/tema_calmo.mp3", # Reutilizando ou adicione músicas específicas
-            # Adicione mais caminhos de músicas aqui se desejar
-        ],
-        "default_music_if_list_empty": "assets/music/default_pt.mp3", # EXEMPLO
+        "music_options": ["assets/music/tema_calmo.mp3"], # Exemplo
+        "default_music_if_list_empty": None,
         "music_volume": 0.1,
         "gtts_language": "pt-br",
-        "text_font_path": "assets/fonts/Arial.ttf", # Verifique se esta fonte está no runner ou adicione-a em assets/fonts/
-        "fact_keywords": ["curiosidades brasil", "fatos em portugues", "mundo curioso pt"],
-        "num_facts_to_use": 5,
-        "category_id": "27" # Educação
+        "text_font_path_for_image": "assets/fonts/Arial.ttf",
+        "num_facts_to_use": 1,
+        "duration_per_fact_slide": 6,
+        "category_id": "27"
     }
 }
 
 def get_authenticated_service(client_secrets_path, token_path):
-    # ... (esta função permanece igual à última versão funcional que corrigiu a autenticação)
-    print("DEBUG_PRINT: [FUNC_AUTH] Entrando em get_authenticated_service.", flush=True)
+    # ... (Esta função permanece como na última versão funcional)
     logging.info("--- Tentando obter serviço autenticado ---")
     creds = None
     if os.path.exists(token_path):
         try:
-            logging.info(f"Tentando carregar credenciais de {token_path}...")
             creds = Credentials.from_authorized_user_file(token_path, SCOPES)
-            logging.info("Credenciais carregadas com sucesso de token.json.")
         except Exception as e:
-            logging.warning(f"Não foi possível carregar credenciais de {token_path}: {e}", exc_info=True)
-            creds = None 
-    else:
-        logging.warning(f"Arquivo token.json NÃO encontrado em {token_path}.")
-
-    if creds and creds.expired and creds.refresh_token:
-        logging.info("Credenciais expiradas, tentando atualizar...")
-        try:
+            logging.warning(f"Não foi possível carregar token de {token_path}: {e}")
+            creds = None
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            try:
+                logging.info("Token expirado, tentando refresh...")
+                creds.refresh(Request())
+            except Exception as e:
+                logging.error(f"Falha ao atualizar token: {e}")
+                creds = None # Invalida creds se o refresh falhar
+        if not creds or not creds.valid: # Se ainda não é válido (sem refresh token ou refresh falhou)
             if not os.path.exists(client_secrets_path):
-                logging.error(f"ERRO CRÍTICO: Arquivo client_secrets.json NÃO encontrado em {client_secrets_path}.")
-                return None 
-            with open(client_secrets_path, 'r') as f:
-                client_secrets_info = json.load(f)
-            if 'installed' not in client_secrets_info:
-                logging.error(f"ERRO: Estrutura 'installed' não encontrada em {client_secrets_path}.")
-                return None 
-            secrets = client_secrets_info['installed']
-            creds_for_refresh = Credentials(
-                token=None,
-                refresh_token=creds.refresh_token,
-                token_uri=secrets.get('token_uri', 'https://oauth2.googleapis.com/token'),
-                client_id=secrets.get('client_id'),
-                client_secret=secrets.get('client_secret'),
-                scopes=creds.scopes
-            )
-            if not all([creds_for_refresh.client_id, creds_for_refresh.client_secret, creds_for_refresh.refresh_token]):
-                logging.error(f"ERRO: Informações cruciais para refresh faltando.")
+                logging.error(f"ERRO CRÍTICO: client_secrets.json não encontrado em {client_secrets_path}")
                 return None
-            logging.info(f"Tentando refresh com client_id: {creds_for_refresh.client_id}")
-            request_obj = Request() 
-            creds_for_refresh.refresh(request_obj) 
-            creds = creds_for_refresh 
-            logging.info("Token atualizado. Salvando...")
-            token_data_to_save = {
-                'token': creds.token, 'refresh_token': creds.refresh_token, 
-                'token_uri': creds.token_uri, 'client_id': creds.client_id,
-                'client_secret': creds.client_secret, 'scopes': creds.scopes,
-                'expiry': creds.expiry.isoformat() if creds.expiry else None 
-            }
+            logging.info("Executando novo fluxo de autorização...")
+            flow = InstalledAppFlow.from_client_secrets_file(client_secrets_path, SCOPES)
+            creds = flow.run_local_server(port=0) # Para ambiente local/primeira vez
+            # Em CI, este passo interativo falhará. O token.json deve ser pré-autorizado.
+        if creds: # Salva o token (novo ou atualizado)
             with open(token_path, 'w') as token_file:
-                json.dump(token_data_to_save, token_file, indent=4)
-            logging.info(f"Arquivo {token_path} atualizado.")
-        except Exception as e:
-            logging.error(f"ERRO ao atualizar token: {e}", exc_info=True)
-            creds = None 
-    elif not creds:
-        logging.error("--- Falha: token.json não encontrado/inválido.")
+                token_file.write(creds.to_json())
+            logging.info(f"Token salvo/atualizado em {token_path}")
+    if not creds or not creds.valid:
+        logging.error("Falha final ao obter credenciais válidas.")
         return None
-    elif not creds.valid:
-        logging.error("--- Falha: Credenciais inválidas e não puderam ser atualizadas.")
-        return None
+    logging.info("Serviço autenticado com sucesso.")
+    return build('youtube', 'v3', credentials=creds)
 
-    logging.info("--- Autenticação OK. Construindo serviço API YouTube. ---")
-    try:
-        youtube_service = build('youtube', 'v3', credentials=creds)
-        logging.info("Serviço 'youtube', 'v3' construído.")
-        return youtube_service
-    except Exception as e:
-        logging.error(f"ERRO ao construir serviço API: {e}", exc_info=True)
-        return None
 
-def get_facts_for_video(keywords, language, num_facts=6): # Aumentado num_facts
-    print(f"DEBUG_PRINT: [FUNC_GET_FACTS] Keywords: {keywords}, Idioma para fatos (idealmente): {language}, Num_facts: {num_facts}", flush=True)
-    logging.info(f"--- Obtendo {num_facts} fatos. Keywords: {keywords}. Idioma ideal: {language} ---")
-    
+def get_facts_for_video(keywords, language, num_facts=1):
+    logging.info(f"Obtendo {num_facts} fatos para idioma '{language}' com keywords: {keywords}")
     # ========================== ATENÇÃO: LÓGICA DE FATOS MULTILÍNGUES ===============================
-    # Esta função PRECISA ser adaptada por você para retornar fatos no 'language' especificado.
+    # Esta função PRECISA ser adaptada por você para retornar fatos REAIS
+    # no IDIOMA ESPECIFICADO ('language') e relacionados às 'keywords'.
     # A implementação atual é apenas um placeholder com listas fixas.
     # =============================================================================================
-    all_facts_placeholder_en = [
-        "A group of owls is called a parliament.", "Honey never spoils.",
-        "The shortest war in history lasted 38 minutes.", "A cloud can weigh over a million pounds.",
-        "Lightning can toast 100,000 slices of bread.", "You walk 3 times around the world in a lifetime.",
-        "Octopuses have three hearts.", "Butterflies taste with their feet."
-    ]
-    all_facts_placeholder_pt = [
-        "Um grupo de corujas é chamado 'parlamento'.", "O mel nunca estraga.",
-        "A guerra mais curta durou 38 minutos.", "Uma nuvem pode pesar mais de 450 toneladas!",
-        "Um raio pode torrar 100.000 pães.", "Você anda 3 voltas ao mundo na vida.",
-        "Polvos têm três corações.", "Borboletas sentem gosto com os pés."
-    ]
-    
-    facts_to_use = []
-    if language.startswith("pt"):
-        logging.info(f"Usando fatos placeholder em Português para o idioma '{language}'. Adapte esta função!")
-        facts_to_use = all_facts_placeholder_pt
-    else: # Default para Inglês
-        logging.info(f"Usando fatos placeholder em Inglês para o idioma '{language}'. Adapte esta função!")
-        facts_to_use = all_facts_placeholder_en
-    
-    if len(facts_to_use) < num_facts:
-        logging.warning(f"Atenção: Solicitados {num_facts} fatos, mas apenas {len(facts_to_use)} disponíveis para '{language}'. Usando todos os disponíveis.")
-        selected_facts = facts_to_use
-    else:
-        selected_facts = random.sample(facts_to_use, num_facts) # Pega uma amostra aleatória se houver mais fatos que o necessário
+    facts_db = {
+        "en": [
+            "A group of flamingos is called a 'flamboyance'.",
+            "Honey is the only food that never spoils.",
+            "The unicorn is the national animal of Scotland.",
+            "A shrimp's heart is in its head.",
+            "Slugs have four noses.",
+            "It is impossible for most people to lick their own elbow."
+        ],
+        "pt-br": [
+            "Um grupo de flamingos é chamado de 'flamboiada'.",
+            "O mel é o único alimento que nunca estraga.",
+            "O unicórnio é o animal nacional da Escócia.",
+            "O coração de um camarão fica na cabeça.",
+            "Lesmas têm quatro narizes.",
+            "É impossível para a maioria das pessoas lamber o próprio cotovelo."
+        ]
+    }
+    available_facts = facts_db.get(language, facts_db["en"]) # Fallback para inglês
+    if len(available_facts) < num_facts:
+        logging.warning(f"Não há fatos suficientes para '{language}'. Solicitados: {num_facts}, Disponíveis: {len(available_facts)}")
+        return available_facts # Retorna o que tiver
+    return random.sample(available_facts, num_facts)
 
-    logging.info(f"Selecionados {len(selected_facts)} fatos.")
-    return selected_facts
-
-def generate_audio_from_text(text, lang, output_filename="audio.mp3"):
-    # ... (função mantida como na última versão funcional) ...
-    print(f"DEBUG_PRINT: [FUNC_GEN_AUDIO] Iniciando. Idioma TTS: {lang}, Output: {output_filename}", flush=True)
-    logging.info(f"--- Gerando áudio (Idioma: {lang}) ---")
+def generate_audio_from_text(text, lang, output_filename):
+    logging.info(f"Gerando áudio para: '{text[:50]}...' (Idioma: {lang})")
     try:
-        output_dir = "temp_audio"
-        if not os.path.exists(output_dir):
-            print(f"DEBUG_PRINT: [FUNC_GEN_AUDIO] Criando diretório: {output_dir}", flush=True)
-            os.makedirs(output_dir, exist_ok=True)
-        
-        audio_path = os.path.join(output_dir, output_filename)
-        print(f"DEBUG_PRINT: [FUNC_GEN_AUDIO] Caminho completo do áudio: {audio_path}", flush=True)
-
         tts = gTTS(text=text, lang=lang, slow=False)
-        print(f"DEBUG_PRINT: [FUNC_GEN_AUDIO] Objeto gTTS criado. Tentando salvar em {audio_path}...", flush=True)
+        output_dir = "temp_audio"
+        os.makedirs(output_dir, exist_ok=True)
+        audio_path = os.path.join(output_dir, output_filename)
         tts.save(audio_path)
-        
         if os.path.exists(audio_path) and os.path.getsize(audio_path) > 0:
-            print(f"DEBUG_PRINT: [FUNC_GEN_AUDIO] SUCESSO: Áudio salvo e arquivo existe e não está vazio em: {audio_path} (Tamanho: {os.path.getsize(audio_path)} bytes)", flush=True)
-            logging.info(f"Áudio gerado e salvo em: {audio_path}")
+            logging.info(f"Áudio salvo em: {audio_path}")
             return audio_path
-        else:
-            size = os.path.getsize(audio_path) if os.path.exists(audio_path) else -1
-            print(f"DEBUG_PRINT_ERROR: [FUNC_GEN_AUDIO] FALHA: Áudio NÃO foi salvo corretamente em {audio_path}. Existe? {os.path.exists(audio_path)}. Tamanho: {size}", flush=True)
-            logging.error(f"FALHA ao salvar áudio ou arquivo vazio em {audio_path}. Existe? {os.path.exists(audio_path)}. Tamanho: {size}")
-            return None
-            
+        logging.error(f"Falha ao salvar áudio ou arquivo vazio: {audio_path}")
+        return None
     except Exception as e:
-        print(f"DEBUG_PRINT_ERROR: [FUNC_GEN_AUDIO] Exceção durante geração de áudio: {e}", flush=True)
-        logging.error(f"ERRO ao gerar áudio para idioma '{lang}': {e}", exc_info=True)
+        logging.error(f"Erro em gTTS para '{lang}': {e}", exc_info=True)
         return None
 
+def generate_dynamic_image_placeholder(fact_text, width, height, font_path, duration):
+    """Gera uma imagem placeholder com fundo gradiente e o texto do fato."""
+    logging.info(f"Gerando imagem placeholder para: '{fact_text[:30]}...'")
+    try:
+        # Gradiente
+        r1, g1, b1 = random.randint(60, 180), random.randint(60, 180), random.randint(60, 180)
+        r2, g2, b2 = min(255, r1 + 40), min(255, g1 + 40), min(255, b1 + 40)
+        
+        img = PILImage.new("RGB", (width, height))
+        draw = PILImageDraw.Draw(img)
+        for y in range(height):
+            r = int(r1 + (r2 - r1) * y / height)
+            g = int(g1 + (g2 - g1) * y / height)
+            b = int(b1 + (b2 - b1) * y / height)
+            draw.line([(0, y), (width, y)], fill=(r, g, b))
 
-def create_video_from_content(facts, narration_audio_path, channel_title="Video", 
-                              background_image_path=None, music_path=None, music_volume=0.1, 
-                              font_path=None):
-    print(f"DEBUG_PRINT: [FUNC_CREATE_VIDEO] Entrando. Narração: {narration_audio_path}, FundoImg: {background_image_path}, Música: {music_path}, Fonte: {font_path}", flush=True)
-    logging.info(f"--- Criando vídeo ({len(facts)} fatos) para '{channel_title}' ---")
+        # Texto
+        padding = int(width * 0.08)
+        max_text_width = width - 2 * padding
+        
+        try:
+            font_size = int(height / 18) # Ajuste conforme necessário
+            font = PILImageFont.truetype(font_path, font_size)
+        except IOError:
+            logging.warning(f"Fonte '{font_path}' não encontrada ou inválida. Usando fonte padrão.")
+            font_size = int(height / 22)
+            font = PILImageFont.load_default(size=font_size)
+
+        lines = []
+        words = fact_text.split()
+        current_line = ""
+        for word in words:
+            bbox = draw.textbbox((0,0), current_line + word + " ", font=font)
+            if bbox[2] - bbox[0] <= max_text_width:
+                current_line += word + " "
+            else:
+                lines.append(current_line.strip())
+                current_line = word + " "
+        lines.append(current_line.strip())
+        
+        total_text_height = sum(draw.textbbox((0,0), line, font=font)[3] - draw.textbbox((0,0), line, font=font)[1] for line in lines)
+        total_text_height += (len(lines) - 1) * (font_size * 0.2) # Espaçamento entre linhas
+        
+        y_text = (height - total_text_height) / 2
+        text_color = (255, 255, 255); stroke_color = (0,0,0); stroke_width = 2
+        
+        for line in lines:
+            bbox = draw.textbbox((0,0), line, font=font)
+            line_width = bbox[2] - bbox[0]
+            line_height = bbox[3] - bbox[1]
+            x_text = (width - line_width) / 2
+            # Desenha a borda (stroke)
+            for dx in range(-stroke_width, stroke_width + 1):
+                for dy in range(-stroke_width, stroke_width + 1):
+                    if dx*dx + dy*dy <= stroke_width*stroke_width : # Stroke circular aproximado
+                        draw.text((x_text + dx, y_text + dy), line, font=font, fill=stroke_color)
+            draw.text((x_text, y_text), line, font=font, fill=text_color) # Desenha o texto
+            y_text += line_height + (font_size * 0.2)
+
+        temp_img_dir = "temp_images"
+        os.makedirs(temp_img_dir, exist_ok=True)
+        temp_img_path = os.path.join(temp_img_dir, f"img_{random.randint(1000,9999)}.png")
+        img.save(temp_img_path)
+        image_clip = ImageClip(temp_img_path).set_duration(duration).set_fps(24)
+        # os.remove(temp_img_path) # Removido para inspeção, mas idealmente seria limpo depois
+        logging.info(f"Imagem placeholder salva em {temp_img_path}")
+        return image_clip
+    except Exception as e:
+        logging.error(f"Erro ao gerar imagem placeholder: {e}", exc_info=True)
+        return ColorClip(size=(width, height), color=(80, 80, 120), duration=duration).set_fps(24)
+
+
+def generate_image_with_gemini_api(fact_text, duration): # Esta é a função que você precisa implementar corretamente
+    logging.warning("*" * 80)
+    logging.warning("ATENÇÃO: A função 'generate_image_with_gemini_api' precisa ser implementada!")
+    logging.warning("Ela deve usar a API do Gemini para gerar uma imagem baseada no 'fact_text'.")
+    logging.warning("O código atual é apenas um placeholder com uma cor sólida.")
+    logging.warning("Verifique a documentação da API do Gemini para geração de imagens (ex: Imagen via Vertex AI).")
+    logging.warning("*" * 80)
     
+    # Placeholder: Retorna um clipe de cor sólida. Substitua pela chamada real à API.
+    # Exemplo hipotético (NÃO FUNCIONAL DIRETAMENTE COM 'gemini-pro-vision' PARA GERAÇÃO):
+    # if GEMINI_SDK_AVAILABLE:
+    #     gemini_api_key = os.environ.get("GEMINI_API_KEY")
+    #     if gemini_api_key:
+    #         try:
+    #             genai.configure(api_key=gemini_api_key)
+    #             # Você precisará usar o modelo e método CORRETO para text-to-image aqui.
+    #             # Exemplo: model = genai.GenerativeModel('seu-modelo-de-geracao-de-imagem')
+    #             # response = model.generate_content(f"Uma imagem ilustrando: {fact_text}")
+    #             # Lógica para processar 'response' e obter os bytes da imagem...
+    #             # image_bytes = ...
+    #             # temp_img_path = os.path.join("temp_images", "gemini_img.png")
+    #             # with open(temp_img_path, 'wb') as f:
+    #             #     f.write(image_bytes)
+    #             # return ImageClip(temp_img_path).set_duration(duration).resize(height=1920).set_fps(24)
+    #             logging.info("Chamada simulada à API Gemini (implementação pendente).")
+    #         except Exception as e:
+    #             logging.error(f"Erro ao tentar usar API Gemini (simulado): {e}")
+    #     else:
+    #         logging.error("Chave GEMINI_API_KEY não configurada para geração de imagem.")
+            
+    # Retorna o placeholder melhorado se a API Gemini não for usada ou falhar:
+    return generate_dynamic_image_placeholder(fact_text, 1080, 1920, "assets/fonts/DejaVuSans-Bold.ttf", duration)
+
+
+def create_video_from_content(facts, narration_audio_files, channel_config, channel_title="Video"):
+    logging.info(f"--- Criando vídeo para '{channel_title}' com {len(facts)} fatos ---")
+    W, H = 1080, 1920  # Formato Shorts (vertical)
+    FPS = 24
+    slide_duration = channel_config.get("duration_per_fact_slide", 5) # Duração de cada slide
+
+    # Configuração do ImageMagick (mantida)
     try:
         current_im_binary = MOPY_CONFIG.get_setting("IMAGEMAGICK_BINARY")
-        logging.info(f"MoviePy: IMAGEMAGICK_BINARY ANTES: '{current_im_binary}'")
-        imagemagick_path = "/usr/bin/convert" 
-        if os.path.exists(imagemagick_path) and current_im_binary != imagemagick_path : # Só reconfigura se necessário
-            logging.info(f"MoviePy: Configurando IMAGEMAGICK_BINARY para '{imagemagick_path}'")
-            change_settings({"IMAGEMAGICK_BINARY": imagemagick_path})
-            new_im_binary = MOPY_CONFIG.get_setting("IMAGEMAGICK_BINARY")
-            logging.info(f"MoviePy: IMAGEMAGICK_BINARY APÓS: '{new_im_binary}'")
-        elif not os.path.exists(imagemagick_path):
-             logging.warning(f"MoviePy: 'convert' NÃO encontrado em '{imagemagick_path}'. TextClip pode usar fallback ou falhar se IMAGEMAGICK_BINARY for '{current_im_binary}'.")
+        if current_im_binary == "unset" or not os.path.exists(current_im_binary): # Se 'unset' ou não existir
+            imagemagick_path = "/usr/bin/convert" 
+            if os.path.exists(imagemagick_path):
+                logging.info(f"MoviePy: Configurando IMAGEMAGICK_BINARY para '{imagemagick_path}'")
+                change_settings({"IMAGEMAGICK_BINARY": imagemagick_path})
+            else:
+                 logging.warning(f"MoviePy: 'convert' NÃO encontrado em '{imagemagick_path}'. TextClip pode usar fallback.")
     except Exception as e_conf:
         logging.warning(f"MoviePy: Exceção ao configurar IMAGEMAGICK_BINARY: {e_conf}")
 
-    try:
-        if not narration_audio_path or not os.path.exists(narration_audio_path) or not os.path.getsize(narration_audio_path) > 0:
-            logging.error(f"ERRO CRÍTICO: Arquivo de narração não encontrado/vazio: {narration_audio_path}")
-            return None
-            
-        narration_clip = AudioFileClip(narration_audio_path)
-        total_duration = narration_clip.duration
-        W, H = 1080, 1920; FPS = 24 # Formato Shorts (vertical)
-        
-        base_visual_clip = None
-        if background_image_path and os.path.exists(background_image_path):
-            try:
-                logging.info(f"Usando imagem de fundo: {background_image_path}")
-                base_visual_clip = ImageClip(background_image_path).set_duration(total_duration).resize(width=W, height=H).set_fps(FPS)
-            except Exception as e_bg:
-                logging.warning(f"Erro ao carregar imagem de fundo '{background_image_path}': {e_bg}. Usando fundo preto.")
-                base_visual_clip = ColorClip(size=(W, H), color=(0, 0, 0), duration=total_duration, ismask=False).set_fps(FPS)
-        else:
-            if background_image_path: logging.warning(f"Imagem de fundo não encontrada: '{background_image_path}'. Usando fundo preto.")
-            else: logging.info("Nenhuma imagem de fundo. Usando fundo preto.")
-            base_visual_clip = ColorClip(size=(W, H), color=(0, 0, 0), duration=total_duration, ismask=False).set_fps(FPS)
+    video_slide_clips = []
+    narration_audioclips_for_concat = []
+    
+    for i, fact_text in enumerate(facts):
+        narration_path = narration_audio_files[i]
+        if not os.path.exists(narration_path):
+            logging.error(f"Arquivo de narração '{narration_path}' não encontrado para o fato: {fact_text[:30]}... Pulando.")
+            continue
 
-        video_clips_list = [base_visual_clip]
-        duration_per_fact = total_duration / len(facts) if facts and len(facts) > 0 else total_duration
+        narration_audio_segment = AudioFileClip(narration_path)
+        # A duração do slide será a maior entre a narração (+ pequena pausa) e a duração mínima configurada.
+        current_fact_duration = max(narration_audio_segment.duration + 0.5, slide_duration) 
         
-        actual_font = font_path if font_path and os.path.exists(font_path) else 'DejaVu-Sans-Bold' # Fallback mais seguro que Arial
-        if font_path and not os.path.exists(font_path):
-            logging.warning(f"Arquivo de fonte '{font_path}' não encontrado. Usando fallback '{actual_font}'.")
-        logging.info(f"Usando fonte para TextClip: {actual_font}")
-
-        for i, fact in enumerate(facts):
-            logging.info(f"Criando TextClip para fato {i+1}...")
-            txt_clip = TextClip(fact, fontsize=70, color='white', font=actual_font,
-                                method='caption', align='center', size=(W*0.85, None), # Aumentado um pouco a largura
-                                stroke_color='black', stroke_width=2.5)
-            txt_clip = txt_clip.set_position('center').set_duration(duration_per_fact).set_start(i * duration_per_fact).set_fps(FPS)
-            video_clips_list.append(txt_clip)
-            
-        final_video_visual_part = CompositeVideoClip(video_clips_list, size=(W, H)).set_fps(FPS)
-
-        # Áudio
-        final_audio_segments = [narration_clip]
-        if music_path and os.path.exists(music_path):
-            try:
-                logging.info(f"Adicionando música: {music_path}, Volume: {music_volume}")
-                music_clip_orig = AudioFileClip(music_path)
-                # Normalizar ou ajustar volume da música
-                music_clip = music_clip_orig.volumex(music_volume)
-
-                if music_clip.duration < total_duration:
-                    # Looping de forma mais suave, se possível, ou apenas repetir N vezes
-                    # Para evitar um loop muito abrupto, pode ser melhor ter uma música mais longa ou fade in/out no loop
-                    num_loops = int(total_duration / music_clip.duration) + 1
-                    looped_segments = [music_clip] * num_loops
-                    music_clip_looped = concatenate_audioclips(looped_segments)
-                    music_final = music_clip_looped.subclip(0, total_duration)
-                else:
-                    music_final = music_clip.subclip(0, total_duration)
-                
-                final_audio_segments.append(music_final)
-                composed_audio = CompositeAudioClip(final_audio_segments) # Narração sobrepõe a música
-                final_video_visual_part = final_video_visual_part.set_audio(composed_audio)
-            except Exception as e_music:
-                logging.warning(f"Erro ao processar música '{music_path}': {e_music}. Vídeo sem música de fundo.")
-                final_video_visual_part = final_video_visual_part.set_audio(narration_clip)
-        else:
-            if music_path: logging.warning(f"Arquivo de música NÃO encontrado: {music_path}. Sem música.")
-            else: logging.info("Nenhuma música de fundo especificada.")
-            final_video_visual_part = final_video_visual_part.set_audio(narration_clip)
-            
-        output_video_dir = "generated_videos"
-        os.makedirs(output_video_dir, exist_ok=True)
-        video_output_filename = f"{channel_title.replace(' ', '_').lower()}_{int(time.time())}_final.mp4"
-        video_output_path = os.path.join(output_video_dir, video_output_filename)
+        # 1. Gerar imagem (usando o placeholder melhorado ou sua futura integração Gemini)
+        dynamic_image_clip = generate_image_with_gemini_api(fact_text, current_fact_duration) # Passa a duração calculada
+        dynamic_image_clip = dynamic_image_clip.set_fps(FPS)
         
-        logging.info(f"Escrevendo vídeo final: {video_output_path}...")
-        final_video_visual_part.write_videofile(video_output_path, codec='libx264', audio_codec='aac', 
-                                             fps=FPS, preset='ultrafast', threads=os.cpu_count() or 2, logger='bar')
-        logging.info("Vídeo final escrito.")
-        return video_output_path
+        # Ajusta o áudio da narração para a duração do slide (se for mais curto, não estica; se for mais longo, será cortado pela duração do slide)
+        narration_audio_segment = narration_audio_segment.subclip(0, min(narration_audio_segment.duration, current_fact_duration))
         
-    except Exception as e:
-        logging.error(f"ERRO CRÍTICO em create_video_from_content: {e}", exc_info=True)
+        # Adiciona o clipe visual e o áudio da narração à lista para concatenação
+        video_slide_clips.append(dynamic_image_clip.set_duration(current_fact_duration))
+        # Cria um clipe de áudio silencioso com a duração do slide e sobrepõe a narração nele
+        # para garantir que cada segmento de áudio tenha a duração correta para a concatenação.
+        silent_segment = AudioFileClip(narration_path).subclip(0,0).set_duration(current_fact_duration) # Áudio silencioso
+        narration_on_silent_bg = CompositeAudioClip([silent_segment, narration_audio_segment])
+        narration_audioclips_for_concat.append(narration_on_silent_bg)
+
+    if not video_slide_clips:
+        logging.error("Nenhum slide de vídeo foi gerado.")
         return None
+
+    final_visual_part = concatenate_videoclips(video_slide_clips).set_fps(FPS)
+    final_narration_audio = concatenate_audioclips(narration_audioclips_for_concat)
+    
+    final_video_with_narration = final_visual_part.set_audio(final_narration_audio)
+    total_video_duration = final_video_with_narration.duration # Duração total real
+
+    # Adicionar música de fundo
+    final_video_with_all_audio = final_video_with_narration
+    music_path = channel_config.get("music_path") # Pega o caminho da música selecionada aleatoriamente
+    music_volume = channel_config.get("music_volume", 0.1)
+
+    if music_path and os.path.exists(music_path):
+        try:
+            logging.info(f"Adicionando música: {music_path}, Volume: {music_volume}")
+            music_clip_orig = AudioFileClip(music_path)
+            music_clip = music_clip_orig.volumex(music_volume)
+            
+            if music_clip.duration < total_video_duration:
+                num_loops = int(total_video_duration / music_clip.duration) + 1
+                looped_segments = [music_clip] * num_loops
+                music_final = concatenate_audioclips(looped_segments).subclip(0, total_video_duration)
+            else:
+                music_final = music_clip.subclip(0, total_video_duration)
+            
+            composed_audio = CompositeAudioClip([final_video_with_narration.audio, music_final])
+            final_video_with_all_audio = final_video_with_narration.set_audio(composed_audio)
+        except Exception as e_music:
+            logging.warning(f"Erro ao adicionar música '{music_path}': {e_music}. Vídeo sem música.")
+    else:
+        if music_path: logging.warning(f"Arquivo de música não encontrado: {music_path}.")
+        else: logging.info("Nenhuma música de fundo especificada.")
+
+    output_dir = "generated_videos"
+    os.makedirs(output_dir, exist_ok=True)
+    video_output_filename = f"{channel_title.replace(' ', '_').lower()}_{int(time.time())}_final.mp4"
+    video_output_path = os.path.join(output_dir, video_output_filename)
+    
+    logging.info(f"Escrevendo vídeo final: {video_output_path} (Duração: {final_video_with_all_audio.duration:.2f}s)...")
+    final_video_with_all_audio.write_videofile(video_output_path, codec='libx264', audio_codec='aac', 
+                                         fps=FPS, preset='ultrafast', threads=os.cpu_count() or 2, logger='bar')
+    logging.info("Vídeo final escrito.")
+    return video_output_path
 
 def upload_video(youtube_service, video_path, title, description, tags, category_id, privacy_status):
-    # ... (função mantida como na última versão funcional, com a correção do link no log) ...
-    print(f"DEBUG_PRINT: [FUNC_UPLOAD_VIDEO] Entrando. Vídeo: {video_path}, Título: {title}, Privacidade: {privacy_status}", flush=True)
-    logging.info(f"--- Iniciando etapa: Upload do vídeo '{title}' para o YouTube com status '{privacy_status}' ---")
+    # ... (função upload_video como na última versão funcional)
+    logging.info(f"--- Upload: '{title}', Status: '{privacy_status}' ---")
     try:
-        if not video_path or not os.path.exists(video_path) or not os.path.getsize(video_path) > 0:
-            logging.error(f"ERRO: Arquivo de vídeo para upload NÃO encontrado ou vazio: {video_path}")
+        if not video_path or not os.path.exists(video_path): # Checagem extra
+            logging.error(f"ERRO Upload: Arquivo de vídeo NÃO encontrado em {video_path}")
             return None
-            
-        logging.info(f"Preparando upload: {video_path} (Tamanho: {os.path.getsize(video_path)} bytes)")
-        body= {
-            'snippet': { 'title': title, 'description': description, 'tags': tags, 'categoryId': category_id },
-            'status': { 'privacyStatus': privacy_status }
+        media = MediaFileUpload(video_path, mimetype='video/mp4', resumable=True)
+        request_body = {
+            'snippet': {'title': title, 'description': description, 'tags': tags, 'categoryId': category_id},
+            'status': {'privacyStatus': privacy_status}
         }
-        media_body = MediaFileUpload(video_path, chunksize=-1, resumable=True)
-        logging.info("Chamando youtube.videos().insert()...")
-        insert_request = youtube_service.videos().insert(part=','.join(body.keys()), body=body, media_body=media_body)
+        logging.info(f"Corpo da requisição para upload: {json.dumps(request_body, indent=2)}")
+        request = youtube_service.videos().insert(part=','.join(request_body.keys()), body=request_body, media_body=media)
         
-        response_upload_final = None; done = False
+        response = None; done = False
         while not done:
-            try:
-                status, response_chunk = insert_request.next_chunk() 
-                if status: logging.info(f"Progresso: {int(status.progress() * 100)}%")
-                if response_chunk is not None: 
-                    done = True; response_upload_final = response_chunk 
-                    logging.info("Upload concluído.")
-            except Exception as e_upload_chunk:
-                logging.error(f"Erro durante next_chunk: {e_upload_chunk}", exc_info=True)
-                return None 
-
-        if not response_upload_final or not response_upload_final.get('id'):
-            logging.error(f"ERRO: Upload falhou ou resposta final inválida: {response_upload_final}")
-            return None
-
-        video_id = response_upload_final.get('id')
-        logging.info(f"Upload completo. Vídeo ID: {video_id}")
-        logging.info(f"Link do vídeo (visível como '{privacy_status}'): https://www.youtube.com/watch?v={video_id}")
-        return video_id
+            status, response_chunk = request.next_chunk()
+            if status: logging.info(f"Upload: {int(status.progress() * 100)}%")
+            if response_chunk is not None: done = True; response = response_chunk
         
+        video_id = response.get('id')
+        if video_id:
+            logging.info(f"Upload completo! Vídeo ID: {video_id}")
+            logging.info(f"Link: https://www.youtube.com/watch?v={video_id}")
+            return video_id
+        else:
+            logging.error(f"Upload falhou ou resposta da API não contém ID. Resposta: {response}")
+            return None
     except Exception as e:
-        logging.error(f"ERRO durante upload: {e}", exc_info=True)
+        logging.error(f"ERRO CRÍTICO durante upload: {e}", exc_info=True)
         return None
 
-
 def main(channel_name_arg):
-    print(f"DEBUG_PRINT: [4] Entrando na função main. Canal solicitado: {channel_name_arg}", flush=True)
-    logging.info(f"--- Iniciando processo para canal: {channel_name_arg} ---")
-
+    logging.info(f"--- Iniciando para canal: {channel_name_arg} ---")
     config = CHANNEL_CONFIGS.get(channel_name_arg)
     if not config:
-        logging.error(f"Configuração para o canal '{channel_name_arg}' não encontrada em CHANNEL_CONFIGS.")
+        logging.error(f"Configuração para '{channel_name_arg}' não encontrada. Verifique CHANNEL_CONFIGS.")
         sys.exit(1)
-    
-    logging.info(f"Configurações para '{channel_name_arg}': Título='{config['video_title_template']}', Idioma TTS='{config['gtts_language']}', NumFatos='{config['num_facts_to_use']}'")
 
-    client_secrets_path = "credentials/client_secret.json" 
-    token_path = "credentials/token.json" # Usando o token decodificado pelo YAML (originalmente de canal1_token.json.base64)
+    client_secrets_path = "credentials/client_secret.json"
+    token_path = "credentials/token.json" 
     
     youtube_service = get_authenticated_service(client_secrets_path, token_path)
-    if not youtube_service: sys.exit(1) 
-    logging.info("Serviço do YouTube autenticado.")
+    if not youtube_service: logging.error("Falha na autenticação."); sys.exit(1)
+    logging.info("Serviço YouTube autenticado.")
 
     facts = get_facts_for_video(
-        keywords=config["fact_keywords"], 
+        keywords=config.get("fact_keywords", ["general facts"]), 
         language=config["gtts_language"], 
         num_facts=config["num_facts_to_use"]
     )
-    if not facts: 
-        logging.error("Nenhum fato obtido. Encerrando."); sys.exit(1)
+    if not facts: logging.error("Nenhum fato obtido."); sys.exit(1)
+
+    narration_audio_files = []
+    for i, fact in enumerate(facts):
+        audio_filename = f"{channel_name_arg}_fact_{i+1}_{int(time.time())}.mp3"
+        path = generate_audio_from_text(fact, config["gtts_language"], audio_filename)
+        if not path: logging.error(f"Falha ao gerar áudio para o fato: {fact[:30]}..."); continue # Pula este fato se o áudio falhar
+        narration_audio_files.append(path)
+
+    if not narration_audio_files:
+        logging.error("Nenhum arquivo de narração foi gerado. Não é possível criar o vídeo.")
+        sys.exit(1)
     
-    facts_for_description = "\n- ".join(facts)
-    # Para gTTS, um texto muito longo pode falhar. Juntar com pausas pode ser melhor se os fatos forem longos individualmente.
-    full_text_for_audio = ". ".join(facts) + "." 
-    audio_file_name = f"{channel_name_arg.lower()}_{int(time.time())}_narration.mp3"
-
-    narration_audio_file_path = generate_audio_from_text(
-        text=full_text_for_audio, 
-        lang=config["gtts_language"], 
-        output_filename=audio_file_name
-    )
-    if not narration_audio_file_path: 
-        logging.error("Falha ao gerar áudio da narração."); sys.exit(1)
-
-    # Seleção de música de fundo
+    # Seleciona música de fundo
     selected_music_path = None
     music_choices = config.get("music_options", [])
-    if music_choices and isinstance(music_choices, list) and len(music_choices) > 0:
+    if music_choices:
         selected_music_path = random.choice(music_choices)
         logging.info(f"Música de fundo selecionada: {selected_music_path}")
-    elif config.get("default_music_if_list_empty"): # Fallback para uma música padrão se a lista estiver vazia
+    elif config.get("default_music_if_list_empty"):
         selected_music_path = config.get("default_music_if_list_empty")
         logging.info(f"Usando música de fundo padrão: {selected_music_path}")
     else:
-        logging.info("Nenhuma música de fundo configurada ou lista vazia.")
+        logging.info("Nenhuma música de fundo configurada.")
 
     video_output_path = create_video_from_content(
-        facts=facts, 
-        narration_audio_path=narration_audio_file_path, 
+        facts=facts, # Passa os textos dos fatos para a função de imagem
+        narration_audio_files=narration_audio_files, 
         channel_title=channel_name_arg,
-        background_image_path=config.get("background_image"),
         music_path=selected_music_path,
-        music_volume=config.get("music_volume", 0.1), # Default volume se não especificado
-        font_path=config.get("text_font_path")
+        music_volume=config.get("music_volume", 0.08),
+        font_path=config.get("text_font_path_for_image"),
+        text_on_screen_font_path=config.get("text_font_path_for_image") # Pode ser diferente se precisar
     )
-    if not video_output_path: 
-        logging.error("Falha ao criar vídeo."); sys.exit(1)
-
-    final_video_title = config["video_title_template"].format(short_id=int(time.time() % 10000))
-    final_video_description = config["video_description_template"].format(facts_list=facts_for_description)
     
-    privacy_status = "public" 
+    # Limpeza dos áudios de narração individuais
+    for audio_file in narration_audio_files:
+        if os.path.exists(audio_file):
+            try:
+                os.remove(audio_file)
+                logging.info(f"Arquivo de áudio temporário removido: {audio_file}")
+            except Exception as e_clean_audio:
+                logging.warning(f"Não foi possível remover áudio temporário {audio_file}: {e_clean_audio}")
 
-    video_id_uploaded = upload_video(youtube_service=youtube_service,
-                                     video_path=video_output_path,
-                                     title=final_video_title,
-                                     description=final_video_description,
-                                     tags=config["video_tags_list"],
-                                     category_id=config["category_id"],
-                                     privacy_status=privacy_status)
+    if not video_output_path: logging.error("Falha ao criar vídeo."); sys.exit(1)
+
+    final_video_title = config["video_title_template"].format(short_id=int(time.time() % 1000)) # ID curto para título
+    # Para a descrição, vamos usar apenas o primeiro fato como exemplo ou um resumo
+    fact_text_for_description = facts[0] if facts else "Descubra fatos incríveis!"
+    final_video_description = config["video_description_template"].format(fact_text_for_description=fact_text_for_description, facts_list="\n- ".join(facts))
+    
+    privacy_status = "public"
+
+    video_id_uploaded = upload_video(youtube_service, video_output_path, final_video_title,
+                                     final_video_description, config["video_tags_list"],
+                                     config["category_id"], privacy_status)
     if video_id_uploaded:
-        logging.info(f"--- SUCESSO para '{channel_name_arg}'! VÍDEO PÚBLICO ID: {video_id_uploaded} ---")
-        try:
-            if narration_audio_file_path and os.path.exists(narration_audio_file_path): os.remove(narration_audio_file_path)
-            # Decida se quer apagar o vídeo local:
-            # if video_output_path and os.path.exists(video_output_path): os.remove(video_output_path)
-            logging.info("Limpeza de arquivo de narração concluída.")
-        except Exception as e_clean:
-            logging.warning(f"Aviso ao limpar arquivos: {e_clean}")
+        logging.info(f"--- SUCESSO '{channel_name_arg}'! VÍDEO PÚBLICO ID: {video_id_uploaded} ---")
+        if os.path.exists(video_output_path): # Opcional: remover vídeo local após upload
+            try:
+                # os.remove(video_output_path)
+                # logging.info(f"Vídeo local removido: {video_output_path}")
+                pass # Deixe comentado para poder inspecionar o vídeo gerado
+            except Exception as e_clean_vid:
+                logging.warning(f"Não foi possível remover vídeo local {video_output_path}: {e_clean_vid}")
     else:
         logging.error(f"--- FALHA no upload para '{channel_name_arg}'. ---")
         sys.exit(1)
     
-    logging.info(f"--- Fim do processo para canal '{channel_name_arg}' ---")
-
+    logging.info(f"--- Fim do processo para '{channel_name_arg}' ---")
 
 if __name__ == "__main__":
-    print("DEBUG_PRINT: [MAIN_BLOCK_1] __main__ executado.", flush=True)
-    logging.info("INFO_LOG: [MAIN_BLOCK_2] Script main.py está sendo executado.")
-    
-    parser = argparse.ArgumentParser(description="Automatiza o YouTube para um canal específico.")
-    parser.add_argument("--channel", required=True, help="Nome do canal (deve ser uma chave em CHANNEL_CONFIGS).")
-    
-    args = None 
+    logging.info("INFO_LOG: [MAIN_BLOCK_2] Script main.py executando.")
+    parser = argparse.ArgumentParser(description="Automatiza YouTube para canal.")
+    parser.add_argument("--channel", required=True, help="Nome do canal (chave em CHANNEL_CONFIGS).")
+    args = None
     try:
         args = parser.parse_args()
-        print(f"DEBUG_PRINT: [MAIN_BLOCK_4] Argumentos parseados: {args}", flush=True)
+        logging.info(f"Argumentos: {args}")
         main(args.channel)
-        logging.info(f"INFO_LOG: [MAIN_BLOCK_7] Execução para '{args.channel}' concluída com sucesso.")
+        logging.info(f"Execução para '{args.channel}' CONCLUÍDA.")
     except SystemExit as e:
-        if e.code is None or e.code == 0:
-            print(f"DEBUG_PRINT: [MAIN_BLOCK_EXIT_0] SystemExit com código {e.code}. Saída normal.", flush=True)
-        else:
-            print(f"DEBUG_PRINT_ERROR: [MAIN_BLOCK_ERROR] SystemExit com código {e.code}. Falha.", flush=True)
-            logging.error(f"Script encerrado com sys.exit({e.code}) para canal '{args.channel if args and hasattr(args, 'channel') else 'N/A'}'.") 
-            raise 
+        if e.code != 0: # Apenas relança se for um código de erro real
+            logging.error(f"Script encerrado com SystemExit({e.code}) para canal '{args.channel if args else 'N/A'}'.")
+            raise
+        else: # Código 0 é sucesso
+             logging.info(f"Script encerrado com SystemExit({e.code}) - Saída normal.")
     except Exception as e_main_block:
-        print(f"DEBUG_PRINT_ERROR: [MAIN_BLOCK_ERROR] Exceção INESPERADA: {e_main_block}", flush=True)
-        logging.error(f"ERRO GRAVE NO BLOCO __main__ para canal '{args.channel if args and hasattr(args, 'channel') else 'N/A'}': {e_main_block}", exc_info=True)
+        logging.error(f"ERRO INESPERADO NO BLOCO PRINCIPAL para '{args.channel if args else 'N/A'}': {e_main_block}", exc_info=True)
         sys.exit(2)

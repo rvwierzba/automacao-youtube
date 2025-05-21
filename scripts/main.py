@@ -1,494 +1,571 @@
-import os
 import argparse
-import logging
-import json
-import sys
-import time
+import os
 import random
-import numpy as np
-
-from gtts import gTTS
-from moviepy.editor import (AudioFileClip, TextClip, CompositeVideoClip,
-                            ColorClip, ImageClip, CompositeAudioClip,
-                            concatenate_videoclips, concatenate_audioclips, AudioClip)
-from moviepy.config import change_settings
-import moviepy.config as MOPY_CONFIG
-
-from PIL import Image as PILImage, ImageDraw as PILImageDraw, ImageFont as PILImageFont
-
-from googleapiclient.discovery import build
-from google_auth_oauthlib.flow import InstalledAppFlow
+import datetime
+import time # Adicionado para o timestamp no nome do arquivo de vídeo
+from dotenv import load_dotenv
+import google.auth
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+from moviepy.editor import (ImageClip, TextClip, CompositeVideoClip, AudioFileClip, concatenate_videoclips, ColorClip)
+from moviepy.config import change_settings
+from PIL import Image, ImageDraw, ImageFont
+import nltk
+try:
+    nltk.data.find('tokenizers/punkt')
+except nltk.downloader.DownloadError:
+    nltk.download('punkt')
+from gtts import gTTS
 
+# --- Configurações Globais e Carregamento de Variáveis de Ambiente ---
+load_dotenv()
+change_settings({"IMAGEMAGICK_BINARY": os.getenv("IMAGEMAGICK_BINARY", "imagemagick")})
+
+# Tente importar a biblioteca Vertex AI e defina um sinalizador
+VERTEX_AI_AVAILABLE = False
 try:
     from google.cloud import aiplatform
-    VERTEX_AI_SDK_AVAILABLE = True
-    logging.info("Biblioteca google-cloud-aiplatform encontrada e importada.")
+    from google.cloud.aiplatform_v1beta1.types import PredictRequest
+    from google.cloud.aiplatform_v1beta1.services.prediction_service import PredictionServiceClient
+    from google.protobuf import json_format
+    from google.protobuf.struct_pb2 import Value
+    VERTEX_AI_AVAILABLE = True
+    print("INFO: Biblioteca google-cloud-aiplatform encontrada. Geração de imagem com Vertex AI Imagen HABILITADA.")
 except ImportError:
-    VERTEX_AI_SDK_AVAILABLE = False
-    logging.warning("Biblioteca google-cloud-aiplatform não encontrada. Geração de imagem com Vertex AI Imagen estará desabilitada.")
-    logging.warning("Para habilitar, adicione 'google-cloud-aiplatform' ao requirements.txt e instale.")
+    print("WARNING:root:Biblioteca google-cloud-aiplatform não encontrada. Geração de imagem com Vertex AI Imagen estará desabilitada.")
+    print("WARNING:root:Para habilitar, adicione 'google-cloud-aiplatform' ao requirements.txt e instale.")
 
-logging.basicConfig(level=logging.INFO, stream=sys.stdout, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# --- Constantes e Configurações ---
 SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+CREDENTIALS_DIR = os.path.join(CURRENT_DIR, '..', 'credentials') # Ajustado para subir um nível e depois entrar em credentials
+CLIENT_SECRET_FILE = os.path.join(CREDENTIALS_DIR, 'client_secret.json')
+TOKEN_FILE = os.path.join(CREDENTIALS_DIR, 'token.json')
 
+GENERATED_VIDEOS_DIR = os.path.join(CURRENT_DIR, '..', 'generated_videos')
+GENERATED_IMAGES_DIR = os.path.join(CURRENT_DIR, '..', 'generated_images')
+GENERATED_AUDIO_DIR = os.path.join(CURRENT_DIR, '..', 'generated_audio')
+ASSETS_DIR = os.path.join(CURRENT_DIR, '..', 'assets') # Para fontes, etc.
+
+FPS_VIDEO = 24 # Frames por segundo para o vídeo
+IMAGE_DURATION_SECONDS = 5 # Duração de cada imagem no vídeo
+MAX_WORDS_PER_LINE_TTS = 10 # Máximo de palavras por linha para o texto na imagem (afeta o TTS)
+MAX_CHARS_PER_LINE_IMAGE = 40 # Máximo de caracteres por linha para o texto na imagem (afeta a quebra de linha visual)
+
+# Configuração específica do canal (pode ser movida para um arquivo de configuração depois)
 CHANNEL_CONFIGS = {
-    "fizzquirk": {
-        "video_title_template": "FizzQuirk Fact Shorts! #{short_id}",
-        "video_description_template": "Astounding fact of the day by FizzQuirk!\n\nFact:\n{fact_text_for_description}\n\n#FizzQuirk #Shorts #AmazingFacts #Trivia #FunFacts",
-        "video_tags_list": ["fizzquirk", "facts", "trivia", "shorts", "fun facts", "learning", "amazing facts"],
-        "music_options": [
-            "assets/music/animado.mp3",
-            "assets/music/fundo_misterioso.mp3",
-            "assets/music/tema_calmo.mp3"
-        ],
-        "default_music_if_list_empty": None,
-        "music_volume": 0.07,
-        "gtts_language": "en",
-        "text_font_path_for_image_placeholder": None, 
-        "num_facts_to_use": 3,
-        "duration_per_fact_slide_min": 6,
-        "pause_after_fact": 1.0,
-        "category_id": "27",
-        "gcp_project_id": os.environ.get("GCP_PROJECT_ID"),
-        "gcp_location": os.environ.get("GCP_LOCATION", "us-central1"),
-        "imagen_model_name": "imagegeneration@006"
+    "default": {
+        "facts_language": "en", # Idioma para os fatos placeholder
+        "image_generation_prompt_prefix": "Create a vibrant and engaging background image for a fun fact video. The image should be abstract and colorful, suitable for a general audience. Aspect ratio 16:9. Style: ",
+        "image_styles": ["digital art", "cartoonish", "flat design", "geometric patterns", "abstract gradient"],
+        "text_font_path_for_image_placeholder": None, # Caminho para a fonte se não usar Vertex AI ou se falhar
+        "text_font_size_for_image_placeholder": 60,
+        "text_color_for_image_placeholder": (255, 255, 255), # Branco
+        "text_bg_color_for_image_placeholder": (0,0,0,150), # Fundo preto semi-transparente para o texto
+        "text_position_for_image_placeholder": ('center', 'center'),
+        "youtube_video_category_id": "24", # Entertainment
+        "youtube_privacy_status": "public", # ou "private" ou "unlisted"
+        "youtube_tags": ["fun facts", "shorts", "trivia", "entertainment"],
+        "youtube_description_template": "Discover interesting fun facts in this short video! #funfacts #shorts #[CHANNEL_NAME]\n\nFact: {fact_text}\n\nDisclaimer: This video was auto-generated."
     },
+    "fizzquirk": {
+        "facts_language": "en",
+        "image_generation_prompt_prefix": "Create a whimsical and quirky background image for a fun fact video for the 'FizzQuirk' channel. The image should be playful and eye-catching, with a touch of humor. Aspect ratio 16:9. Style: ",
+        "image_styles": ["quirky illustration", "pop art", "surreal art", "bright and bold"],
+        "text_font_path_for_image_placeholder": None, # Especificar se tiver uma fonte customizada
+        "text_font_size_for_image_placeholder": 65,
+        "text_color_for_image_placeholder": (255, 255, 0), # Amarelo
+        "text_bg_color_for_image_placeholder": (0,0,0,180),
+        "text_position_for_image_placeholder": ('center', 'bottom'),
+        "youtube_video_category_id": "24",
+        "youtube_privacy_status": "public",
+        "youtube_tags": ["fizzquirk", "quirky facts", "fun shorts", "weird trivia"],
+        "youtube_description_template": "Get your daily dose of quirkiness with FizzQuirk! #fizzquirk #funfacts #[CHANNEL_NAME]\n\nFact: {fact_text}\n\nDisclaimer: This video was auto-generated for FizzQuirk."
+    }
+    # Adicione outras configurações de canal aqui
 }
 
-def get_authenticated_service(client_secrets_path, token_path):
-    # ... (código da função mantido como na última versão funcional) ...
-    logging.info(f"DEBUG_PRINT: [FUNC_AUTH] Tentando autenticar com token: {token_path} e client_secrets: {client_secrets_path}")
+# --- Funções de Autenticação do YouTube ---
+def get_youtube_credentials():
+    """Obtém ou atualiza as credenciais do usuário para a API do YouTube."""
     creds = None
-    if os.path.exists(token_path):
+    if os.path.exists(TOKEN_FILE):
         try:
-            creds = Credentials.from_authorized_user_file(token_path, SCOPES)
-            logging.info(f"Credenciais carregadas de {token_path}")
+            creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
         except Exception as e:
-            logging.warning(f"Não foi possível carregar token de {token_path}: {e}. Tentando fluxo de autorização.")
-            creds = None
-    
+            print(f"ERRO ao carregar token.json: {e}")
+            creds = None # Garante que creds seja None se o token for inválido
+
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             try:
-                logging.info("Token expirado, tentando refresh...")
+                print("INFO: Credenciais expiradas. Tentando atualizar...")
                 creds.refresh(Request())
-                logging.info("Token atualizado com sucesso via refresh.")
+                print("INFO: Credenciais atualizadas com sucesso.")
             except Exception as e:
-                logging.error(f"Falha ao atualizar token: {e}. Será necessário novo fluxo de autorização se não houver client_secrets.")
-                creds = None 
-        
-        if not creds or not creds.valid: 
-            if not os.path.exists(client_secrets_path):
-                logging.error(f"ERRO CRÍTICO: client_secrets.json não encontrado em {client_secrets_path}")
+                print(f"ERRO CRÍTICO: Falha ao atualizar credenciais: {e}")
+                print("INFO: Será necessário reautenticar.")
+                creds = None # Força a reautenticação
+        else:
+            if not os.path.exists(CLIENT_SECRET_FILE):
+                print(f"ERRO CRÍTICO: Arquivo client_secret.json não encontrado em {CLIENT_SECRET_FILE}")
+                print("INFO: Faça o download do seu client_secret.json do Google Cloud Console e coloque-o no diretório 'credentials'.")
                 return None
-            logging.info("Executando novo fluxo de autorização (pode ser interativo para ambiente local)...")
             try:
-                flow = InstalledAppFlow.from_client_secrets_file(client_secrets_path, SCOPES)
-                if "GITHUB_ACTIONS" in os.environ: 
-                     logging.error("ERRO: Novo fluxo de autorização interativo não é suportado em CI. Pré-autorize o token.json.")
-                     return None
-                creds = flow.run_local_server(port=0) 
-            except Exception as e_flow:
-                logging.error(f"Falha no fluxo de autorização: {e_flow}")
+                print("INFO: Iniciando novo fluxo de autenticação.")
+                flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRET_FILE, SCOPES)
+                creds = flow.run_local_server(port=0)
+                print("INFO: Autenticação bem-sucedida.")
+            except Exception as e:
+                print(f"ERRO CRÍTICO: Falha durante o fluxo de autenticação: {e}")
                 return None
-        
-        if creds: 
+
+        if creds:
             try:
-                with open(token_path, 'w') as token_file:
-                    token_file.write(creds.to_json())
-                logging.info(f"Token salvo/atualizado em {token_path}")
-            except Exception as e_save:
-                logging.error(f"Erro ao salvar token em {token_path}: {e_save}")
+                os.makedirs(os.path.dirname(TOKEN_FILE), exist_ok=True)
+                with open(TOKEN_FILE, 'w') as token:
+                    token.write(creds.to_json())
+                print(f"INFO: Token salvo em {TOKEN_FILE}")
+            except Exception as e:
+                print(f"ERRO: Não foi possível salvar o token em {TOKEN_FILE}: {e}")
+    return creds
 
-    if not creds or not creds.valid:
-        logging.error("Falha final ao obter credenciais válidas para YouTube.")
-        return None
-        
-    logging.info("Serviço YouTube autenticado com sucesso.")
-    return build('youtube', 'v3', credentials=creds)
+# --- Funções de Geração de Conteúdo ---
 
-def get_facts_for_video(keywords, language, num_facts=1):
-    # ... (função mantida) ...
-    logging.info(f"Obtendo {num_facts} fatos para idioma '{language}' com keywords: {keywords}")
-    facts_db = {
-        "en": [
-            "A group of flamingos is called a 'flamboyance'.", "Honey is the only food that never spoils.",
-            "The unicorn is the national animal of Scotland.", "A shrimp's heart is in its head.",
-            "Slugs have four noses.", "It is impossible for most people to lick their own elbow.",
-            "A bolt of lightning contains enough energy to toast 100,000 slices of bread.",
-            "The oldest known living tree is over 4,800 years old."
-        ],
-        "pt-br": [ 
-            "Um grupo de flamingos é chamado de 'bando' ou, poeticamente, 'flamboiada'.", 
-            "O mel é o único alimento que realmente nunca estraga.",
-            "O unicórnio é o animal nacional da Escócia.", 
-            "O coração de um camarão fica na cabeça.",
-            "Lesmas têm quatro narizes, ou melhor, tentáculos que funcionam como narizes."
+def get_facts_for_video(num_facts=3, channel_name="default"):
+    """
+    Busca ou gera uma lista de fatos para o vídeo.
+    ATENÇÃO: Esta é uma função placeholder. Adapte para buscar de uma API, arquivo, etc.
+    """
+    config = CHANNEL_CONFIGS.get(channel_name, CHANNEL_CONFIGS["default"])
+    lang = config["facts_language"]
+    print(f"WARNING:root:ALERTA: Usando lista de fatos placeholder para '{lang}'. Adapte 'get_facts_for_video' para conteúdo real.")
+
+    if lang == "pt-br":
+        placeholder_facts = [
+            "O mel nunca estraga.",
+            "Polvos têm três corações.",
+            "A Torre Eiffel pode ser 15 cm mais alta durante o verão.",
+            "O som de um trovão não pode ser ouvido no vácuo do espaço.",
+            "Morcegos são os únicos mamíferos capazes de voar."
         ]
-    }
-    logging.warning(f"ALERTA: Usando lista de fatos placeholder para '{language}'. Adapte 'get_facts_for_video' para conteúdo real.")
-    available_facts = facts_db.get(language, facts_db.get("en", [])) 
+    else: # Default to English
+        placeholder_facts = [
+            "Honey never spoils.",
+            "Octopuses have three hearts.",
+            "The Eiffel Tower can be 15 cm taller during the summer.",
+            "The sound of a thunder cannot be heard in the vacuum of space.",
+            "Bats are the only mammals capable of flight."
+        ]
+    return random.sample(placeholder_facts, min(num_facts, len(placeholder_facts)))
 
-    if not available_facts:
-        logging.error(f"Nenhuma lista de fatos encontrada para o idioma '{language}' ou fallback 'en'.")
-        return []
-    if len(available_facts) < num_facts:
-        logging.warning(f"Fatos insuficientes ({len(available_facts)}) para '{language}'. Solicitados: {num_facts}. Usando todos disponíveis.")
-        return available_facts
-    return random.sample(available_facts, num_facts)
 
-def generate_audio_from_text(text, lang, output_filename):
-    # ... (função mantida) ...
-    logging.info(f"Gerando áudio para: '{text[:50]}...' (Idioma: {lang})")
-    try:
-        tts = gTTS(text=text, lang=lang, slow=False)
-        output_dir = "temp_audio"; os.makedirs(output_dir, exist_ok=True)
-        audio_path = os.path.join(output_dir, output_filename)
-        tts.save(audio_path)
-        if os.path.exists(audio_path) and os.path.getsize(audio_path) > 0:
-            logging.info(f"Áudio salvo em: {audio_path}")
-            return audio_path
-        logging.error(f"Falha ao salvar áudio ou arquivo vazio: {audio_path}")
-    except Exception as e:
-        logging.error(f"Erro em gTTS para '{lang}': {e}", exc_info=True)
-    return None
+def generate_image_with_vertex_ai(prompt_text, image_path, project_id, location="us-central1", model_id="imagegeneration@006"):
+    """
+    Gera uma imagem usando Vertex AI Imagen e salva no caminho especificado.
+    Retorna o caminho da imagem gerada ou None em caso de falha.
+    """
+    if not VERTEX_AI_AVAILABLE:
+        print("WARNING:root:SDK Vertex AI (`google-cloud-aiplatform`) não disponível. Não é possível gerar imagem com Vertex AI.")
+        return None
 
-def generate_dynamic_image_placeholder(fact_text, width, height, font_path_config, duration, fps_value):
-    # ... (função mantida como na última versão funcional) ...
-    logging.info(f"Gerando imagem PLACEHOLDER para: '{fact_text[:30]}...'")
-    temp_img_path = None 
-    try:
-        r1, g1, b1 = random.randint(40, 120), random.randint(40, 120), random.randint(40, 120)
-        r2, g2, b2 = min(255, r1 + random.randint(40,80)), min(255, g1 + random.randint(40,80)), min(255, b1 + random.randint(40,80))
-        
-        img = PILImage.new("RGB", (width, height))
-        draw = PILImageDraw.Draw(img)
-        for y_grad in range(height):
-            r_curr = int(r1 + (r2 - r1) * y_grad / height); g_curr = int(g1 + (g2 - g1) * y_grad / height); b_curr = int(b1 + (b2 - b1) * y_grad / height)
-            draw.line([(0, y_grad), (width, y_grad)], fill=(r_curr, g_curr, b_curr))
-
-        padding = int(width * 0.08); max_text_width = width - 2 * padding
-        font_to_use = None; current_font_size = int(height / 17) 
-        try:
-            if font_path_config and os.path.exists(font_path_config):
-                font_to_use = PILImageFont.truetype(font_path_config, current_font_size)
-                logging.info(f"Usando fonte customizada para placeholder: {font_path_config} com tamanho {current_font_size}")
-            else:
-                if font_path_config: logging.warning(f"Fonte '{font_path_config}' não encontrada. Usando padrão Pillow.")
-                else: logging.info("Nenhum caminho de fonte especificado. Usando padrão Pillow.")
-                font_to_use = PILImageFont.load_default(size=current_font_size) 
-        except Exception as e_font: 
-            logging.warning(f"Erro ao carregar fonte '{font_path_config}': {e_font}. Usando padrão Pillow.")
-            current_font_size = max(15, int(height / 22)) 
-            font_to_use = PILImageFont.load_default(size=current_font_size)
-
-        lines = []; words = fact_text.split(); current_line = ""
-        for word in words:
-            try: 
-                bbox_test = draw.textbbox((0,0), current_line + word + " ", font=font_to_use)
-                text_w = bbox_test[2] - bbox_test[0]
-            except AttributeError: text_w = draw.textlength(current_line + word + " ", font=font_to_use) 
-
-            if text_w <= max_text_width: current_line += word + " "
-            else: lines.append(current_line.strip()); current_line = word + " "
-        lines.append(current_line.strip())
-        
-        line_heights = []
-        for line in lines:
-            try: bbox_line = draw.textbbox((0,0), line, font=font_to_use); line_h = bbox_line[3] - bbox_line[1]
-            except AttributeError: ascent, descent = font_to_use.getmetrics(); line_h = ascent + descent
-            line_heights.append(line_h)
-
-        spacing = int(current_font_size * 0.2) 
-        total_text_height = sum(line_heights) + (len(lines) - 1) * spacing
-        
-        y_text_start = (height - total_text_height) / 2
-        text_color=(255, 255, 255); stroke_color=(0,0,0); stroke_width_val=max(1, int(current_font_size/20))
-        
-        current_y = y_text_start
-        for i, line in enumerate(lines):
-            try: bbox_line = draw.textbbox((0,0), line, font=font_to_use); line_w = bbox_line[2] - bbox_line[0]
-            except AttributeError: line_w = draw.textlength(line, font=font_to_use)
-            x_text = (width - line_w) / 2
-            for dx_s in range(-stroke_width_val, stroke_width_val + 1):
-                for dy_s in range(-stroke_width_val, stroke_width_val + 1):
-                    if dx_s*dx_s + dy_s*dy_s <= stroke_width_val*stroke_width_val :
-                         draw.text((x_text + dx_s, current_y + dy_s), line, font=font_to_use, fill=stroke_color, align="center")
-            draw.text((x_text, current_y), line, font=font_to_use, fill=text_color, align="center")
-            current_y += line_heights[i] + spacing
-
-        temp_img_dir = "temp_images"; os.makedirs(temp_img_dir, exist_ok=True)
-        temp_img_path = os.path.join(temp_img_dir, f"placeholder_{random.randint(1000,9999)}_{int(time.time()*1000)}.png")
-        img.save(temp_img_path)
-        image_clip = ImageClip(temp_img_path).set_duration(duration).set_fps(fps_value) 
-        return image_clip, temp_img_path
-    except Exception as e:
-        logging.error(f"Erro ao gerar imagem placeholder: {e}", exc_info=True)
-        return ColorClip(size=(width, height), color=(random.randint(50,100),random.randint(50,100),random.randint(50,100)), duration=duration).set_fps(fps_value), None
-
-def generate_image_with_vertex_ai_imagen(fact_text, duration, config, font_path_for_fallback, fps_value):
-    # ... (função mantida como na última versão, com placeholder para Vertex AI Imagen) ...
-    logging.info(f"Tentando gerar imagem com Vertex AI para: '{fact_text[:30]}...'")
-    project_id = config.get("gcp_project_id")
-    location = config.get("gcp_location")
-    imagen_model_name = config.get("imagen_model_name", "imagegeneration@006") 
-
-    if not VERTEX_AI_SDK_AVAILABLE:
-        logging.warning("SDK Vertex AI (`google-cloud-aiplatform`) não disponível. Usando placeholder de imagem.")
-        return generate_dynamic_image_placeholder(fact_text, 1080, 1920, font_path_for_fallback, duration, fps_value)
-
-    if not all([project_id, location, imagen_model_name]):
-        logging.error("ID do projeto GCP, localização ou nome do modelo Imagen não configurados. Usando placeholder.")
-        return generate_dynamic_image_placeholder(fact_text, 1080, 1920, font_path_for_fallback, duration, fps_value)
-    
-    logging.info("*"*10 + " CHAMANDO VERTEX AI IMAGEN (ADAPTE ESTE CÓDIGO!) " + "*"*10)
-    
+    print(f"INFO: Solicitando imagem ao Vertex AI com o prompt: '{prompt_text}'")
     try:
         aiplatform.init(project=project_id, location=location)
-        model = aiplatform.ImageGenerationModel.from_pretrained(imagen_model_name)
-        prompt = (
-            f"A visually stunning and captivating image (9:16 aspect ratio for YouTube Shorts) "
-            f"that creatively illustrates the interesting fact: \"{fact_text}\". "
-            f"Style: digital art, cinematic lighting, eye-catching, vibrant. Avoid text overlays on the image itself."
-        )
-        logging.info(f"Prompt para Imagen: {prompt}")
-        response = model.generate_images(prompt=prompt, number_of_images=1)
-        
-        if response.images:
-            image_obj = response.images[0]
-            temp_img_dir = "temp_images_vertex"; os.makedirs(temp_img_dir, exist_ok=True)
-            gen_img_path = os.path.join(temp_img_dir, f"vertex_img_{int(time.time()*1000)}.png")
-            
-            if hasattr(image_obj, '_image_bytes') and image_obj._image_bytes:
-                 with open(gen_img_path, "wb") as f: f.write(image_obj._image_bytes)
-            elif hasattr(image_obj, 'save'): image_obj.save(location=gen_img_path)
-            else:
-                logging.error("Não foi possível salvar a imagem do Vertex AI."); return generate_dynamic_image_placeholder(fact_text, 1080, 1920, font_path_for_fallback, duration, fps_value)
-
-            logging.info(f"Imagem gerada com Vertex AI e salva em: {gen_img_path}")
-            img_clip = ImageClip(gen_img_path).set_duration(duration).set_fps(fps_value)
-            final_img_clip = img_clip.resize(height=1920) 
-            if final_img_clip.w > 1080: final_img_clip = final_img_clip.crop(x_center=final_img_clip.w/2, width=1080)
-            elif final_img_clip.w < 1080: final_img_clip = final_img_clip.resize(width=1080)
-            if final_img_clip.h > 1920: final_img_clip = final_img_clip.crop(y_center=final_img_clip.h/2, height=1920)
-            return final_img_clip, gen_img_path 
-        else:
-            logging.error("Vertex AI Imagen API não retornou imagens."); return generate_dynamic_image_placeholder(fact_text, 1080, 1920, font_path_for_fallback, duration, fps_value)
-    except Exception as e:
-        logging.error(f"Erro ao gerar imagem com Vertex AI Imagen: {e}", exc_info=True); return generate_dynamic_image_placeholder(fact_text, 1080, 1920, font_path_for_fallback, duration, fps_value)
-
-def create_video_from_content(facts, narration_audio_files, channel_config, channel_title="Video"):
-    # ... (função create_video_from_content como na última versão, já corrigida para FPS e com a inicialização de audio_slide_segments)
-    logging.info(f"--- Criando vídeo para '{channel_title}' com {len(facts)} fatos ---")
-    W, H = 1080, 1920; FPS_VIDEO = 24 
-    default_slide_duration = channel_config.get("duration_per_fact_slide_min", 6)
-    pause_after_fact = channel_config.get("pause_after_fact", 1.0)
-    font_for_placeholder = channel_config.get("text_font_path_for_image_placeholder")
-
-    video_slide_clips = []
-    audio_slide_segments = [] # Inicializada aqui!
-    temp_image_paths_to_clean = []
-    current_timeline_pos = 0.0
-
-    for i, fact_text in enumerate(facts):
-        narration_file = narration_audio_files[i]
-        if not (narration_file and os.path.exists(narration_file) and os.path.getsize(narration_file) > 0):
-            logging.warning(f"Narração inválida para '{fact_text[:30]}...'. Pulando."); continue
-        
-        narration_clip_instance = AudioFileClip(narration_file)
-        slide_duration = max(narration_clip_instance.duration + pause_after_fact, default_slide_duration)
-        
-        image_clip_result, temp_img_path = generate_image_with_vertex_ai_imagen(
-            fact_text, slide_duration, channel_config, 
-            font_for_placeholder, FPS_VIDEO 
-        )
-        if temp_img_path: temp_image_paths_to_clean.append(temp_img_path)
-        if image_clip_result is None: 
-            logging.error(f"Imagem nula para '{fact_text[:30]}...'. Pulando."); continue
-
-        image_clip_result = image_clip_result.set_duration(slide_duration).set_fps(FPS_VIDEO).set_start(current_timeline_pos)
-        video_slide_clips.append(image_clip_result)
-
-        narration_part_for_slide = narration_clip_instance.subclip(0, min(narration_clip_instance.duration, slide_duration))
-        current_segment_audio = None
-        if narration_part_for_slide.duration < slide_duration:
-            silence_needed = slide_duration - narration_part_for_slide.duration
-            n_channels = getattr(narration_part_for_slide, 'nchannels', 2)
-            audio_fps_val = getattr(narration_part_for_slide, 'fps', 44100)
-            make_frame_silent = lambda t: np.zeros(n_channels)
-            padding = AudioClip(make_frame_silent, duration=silence_needed, fps=audio_fps_val)
-            current_segment_audio = concatenate_audioclips([narration_part_for_slide, padding])
-        else:
-            current_segment_audio = narration_part_for_slide
-        
-        audio_slide_segments.append(current_segment_audio.set_start(current_timeline_pos)) 
-        current_timeline_pos += slide_duration
-
-    if not video_slide_clips: logging.error("Nenhum slide de vídeo foi gerado."); return None
-
-    final_visual_part = CompositeVideoClip(video_slide_clips, size=(W,H)).set_duration(current_timeline_pos).set_fps(FPS_VIDEO)
-    final_narration_audio = CompositeAudioClip(audio_slide_segments).set_duration(current_timeline_pos)
-    final_video_with_narration = final_visual_part.set_audio(final_narration_audio)
-    
-    selected_music_path = channel_config.get("selected_music_path")
-    music_volume = channel_config.get("music_volume", 0.08)
-    final_product_video = final_video_with_narration
-    total_video_duration_actual = final_product_video.duration
-
-    if selected_music_path and os.path.exists(selected_music_path):
-        try:
-            music_clip = AudioFileClip(selected_music_path).volumex(music_volume)
-            if music_clip.duration < total_video_duration_actual:
-                music_final = music_clip.loop(duration=total_video_duration_actual)
-            else:
-                music_final = music_clip.subclip(0, total_video_duration_actual)
-            
-            current_audio = final_product_video.audio 
-            if current_audio:
-                final_audio_track = CompositeAudioClip([current_audio, music_final])
-                final_product_video = final_product_video.set_audio(final_audio_track)
-            else: 
-                final_product_video = final_product_video.set_audio(music_final)
-            logging.info(f"Música '{selected_music_path}' adicionada.")
-        except Exception as e_music:
-            logging.warning(f"Erro ao adicionar música '{selected_music_path}': {e_music}.")
-    
-    output_dir = "generated_videos"; os.makedirs(output_dir, exist_ok=True)
-    video_fname = f"{channel_title.replace(' ', '_').lower()}_{int(time.time())}.mp4"
-    video_output_path = os.path.join(output_dir, video_fname)
-    
-    logging.info(f"Escrevendo vídeo final: {video_output_path} (Duração: {final_product_video.duration:.2f}s)")
-    final_product_video.write_videofile(video_output_path, codec='libx264', audio_codec='aac', 
-                                     fps=FPS_VIDEO, preset='ultrafast', threads=(os.cpu_count() or 2), logger='bar')
-    logging.info("Vídeo final escrito.")
-
-    for img_path in temp_image_paths_to_clean:
-        if os.path.exists(img_path):
-            try: os.remove(img_path); logging.info(f"Imagem temp removida: {img_path}")
-            except Exception as e: logging.warning(f"Falha ao remover img temp {img_path}: {e}")
-            
-    return video_output_path
-
-def upload_video(youtube_service, video_path, title, description, tags, category_id, privacy_status):
-    logging.info(f"--- Upload: '{title}', Status: '{privacy_status}' ---")
-    response_upload_final = None # CORREÇÃO: Inicializa response_upload_final
-    try:
-        if not video_path or not os.path.exists(video_path):
-            logging.error(f"ERRO Upload: Arquivo de vídeo NÃO encontrado em {video_path}")
-            return None
-        media = MediaFileUpload(video_path, mimetype='video/mp4', resumable=True)
-        request_body = {
-            'snippet': {'title': title, 'description': description, 'tags': tags, 'categoryId': category_id},
-            'status': {'privacyStatus': privacy_status}
+        parameters = {
+            "prompt": prompt_text,
+            "sampleCount": 1,
+            "aspectRatio": "16:9", #  "1:1", "9:16", "4:3", "3:4"
+            # "negativePrompt": "text, watermark, poorly drawn", # Exemplo
+            # "seed": 12345 # Para reprodutibilidade, se necessário
         }
-        request = youtube_service.videos().insert(part=','.join(request_body.keys()), body=request_body, media_body=media)
-        
-        done = False
-        while not done:
-            status, response_chunk = request.next_chunk() # response_chunk é a resposta do chunk atual
-            if status: logging.info(f"Upload: {int(status.progress() * 100)}%")
-            if response_chunk is not None: # Significa que o upload foi concluído
-                done = True
-                response_upload_final = response_chunk # Atribui a resposta final aqui
-        
-        if response_upload_final: # Checa se response_upload_final foi atribuído
-            video_id = response_upload_final.get('id')
-            if video_id:
-                logging.info(f"Upload completo! Vídeo ID: {video_id}")
-                logging.info(f"Link: https://www.youtube.com/watch?v={video_id}") 
-                return video_id
+        endpoint = f"projects/{project_id}/locations/{location}/publishers/google/models/{model_id}"
+
+        # Precisamos construir o request manualmente para usar a API REST via client library genérica
+        # quando não estamos em um ambiente que suporta gRPC totalmente (como alguns runners de CI)
+        # ou para ter mais controle sobre o timeout.
+
+        # Se você tiver problemas de timeout, pode precisar ajustar o cliente da API.
+        # Para simplificar, estamos usando aiplatform.Endpoint que lida com isso.
+        # No entanto, a documentação mais recente pode sugerir o uso direto de PredictionServiceClient.
+
+        # Tentativa com a forma mais simples e recomendada primeiro:
+        model = aiplatform.Endpoint(endpoint_name=endpoint) # Usando o nome do modelo diretamente como endpoint
+        response = model.predict(instances=[parameters])
+
+        # A API pode retornar a imagem como bytes codificados em base64
+        if response.predictions and len(response.predictions) > 0:
+            prediction = response.predictions[0]
+            if isinstance(prediction, dict) and "bytesBase64Encoded" in prediction:
+                image_bytes = prediction["bytesBase64Encoded"]
+                os.makedirs(os.path.dirname(image_path), exist_ok=True)
+                with open(image_path, "wb") as f:
+                    import base64
+                    f.write(base64.b64decode(image_bytes))
+                print(f"INFO: Imagem gerada e salva em {image_path}")
+                return image_path
             else:
-                logging.error(f"Upload pode ter falhado ou API não retornou ID. Resposta: {response_upload_final}")
+                print(f"ERRO: Resposta do Vertex AI não continha 'bytesBase64Encoded' esperado: {prediction}")
                 return None
-        else: 
-            logging.error("Upload não retornou uma resposta final válida após o loop.")
+        else:
+            print(f"ERRO: Nenhuma predição retornada pelo Vertex AI: {response}")
             return None
+
     except Exception as e:
-        logging.error(f"ERRO CRÍTICO durante upload: {e}", exc_info=True)
+        print(f"ERRO CRÍTICO ao gerar imagem com Vertex AI: {e}")
         return None
 
-def main(channel_name_arg):
-    # ... (função main como na última versão funcional) ...
-    logging.info(f"--- Iniciando para canal: {channel_name_arg} ---")
-    config = CHANNEL_CONFIGS.get(channel_name_arg)
-    if not config:
-        logging.error(f"Config '{channel_name_arg}' não encontrada."); sys.exit(1)
+def create_placeholder_image_with_text(text, image_path, width=1920, height=1080, channel_name="default"):
+    """Cria uma imagem de placeholder com gradiente e o texto centralizado."""
+    config = CHANNEL_CONFIGS.get(channel_name, CHANNEL_CONFIGS["default"])
+    print(f"WARNING:root:SDK Vertex AI (`google-cloud-aiplatform`) não disponível ou falhou. Usando placeholder de imagem para: {text}")
 
-    selected_music_path = None
-    music_choices = config.get("music_options", [])
-    if music_choices: selected_music_path = random.choice(music_choices)
-    config["selected_music_path"] = selected_music_path 
+    img = Image.new('RGB', (width, height), color = (73, 109, 137)) # Cor base
+    draw = ImageDraw.Draw(img)
 
-    client_secrets_path = "credentials/client_secret.json"
-    token_path = "credentials/token.json" 
-    
-    youtube_service = get_authenticated_service(client_secrets_path, token_path)
-    if not youtube_service: logging.error("Falha YouTube auth."); sys.exit(1)
+    # Gradiente simples (opcional, pode ser customizado)
+    for i in range(height):
+        r = int(73 + (100 - 73) * (i / height))
+        g = int(109 + (150 - 109) * (i / height))
+        b = int(137 + (200 - 137) * (i / height))
+        draw.line([(0, i), (width, i)], fill=(r, g, b))
 
-    facts_list = get_facts_for_video(config.get("fact_keywords", []), config["gtts_language"], config["num_facts_to_use"])
-    if not facts_list: logging.error("Sem fatos."); sys.exit(1)
+    try:
+        if config["text_font_path_for_image_placeholder"] and os.path.exists(config["text_font_path_for_image_placeholder"]):
+            font = ImageFont.truetype(config["text_font_path_for_image_placeholder"], config["text_font_size_for_image_placeholder"])
+            print(f"INFO: Usando fonte customizada para placeholder: {config['text_font_path_for_image_placeholder']}")
+        else:
+            if config["text_font_path_for_image_placeholder"]: # Se o caminho foi dado mas não encontrado
+                 print(f"WARNING:root:Fonte '{config['text_font_path_for_image_placeholder']}' não encontrada. Usando padrão.")
+            font = ImageFont.truetype(os.path.join(ASSETS_DIR, "fonts", "arial.ttf"), config["text_font_size_for_image_placeholder"]) # Fonte padrão se nenhuma especificada ou encontrada
+            print(f"INFO: Usando fonte padrão Arial para placeholder.")
+    except IOError:
+        print(f"WARNING:root:Fonte não pôde ser carregada. Usando fonte default do Pillow.")
+        font = ImageFont.load_default()
 
-    narration_audio_files = []
-    temp_audio_dir = "temp_audio"; os.makedirs(temp_audio_dir, exist_ok=True)
-    actual_facts_with_audio = [] 
 
-    for i, fact in enumerate(facts_list):
-        audio_fname = f"{channel_name_arg}_fact_{i+1}_{int(time.time()*1000)}_{random.randint(0,1000)}.mp3"
-        path = generate_audio_from_text(fact, config["gtts_language"], audio_fname)
-        if path: 
-            narration_audio_files.append(path)
-            actual_facts_with_audio.append(fact)
-        else: 
-            logging.warning(f"Falha áudio para fato: '{fact[:30]}...'.")
-    
-    if not narration_audio_files or len(narration_audio_files) != len(actual_facts_with_audio) or not actual_facts_with_audio :
-         logging.error(f"Geração de áudio inconsistente. Fatos válidos: {len(actual_facts_with_audio)}, Áudios: {len(narration_audio_files)}. Abortando.")
-         for audio_f in narration_audio_files: 
-             if os.path.exists(audio_f): os.remove(audio_f)
-         sys.exit(1)
+    # Quebra de linha inteligente para o texto
+    lines = []
+    words = text.split()
+    current_line = ""
+    for word in words:
+        if len(current_line + " " + word) <= MAX_CHARS_PER_LINE_IMAGE:
+            current_line += " " + word if current_line else word
+        else:
+            lines.append(current_line)
+            current_line = word
+    lines.append(current_line)
+    wrapped_text = "\n".join(lines)
 
-    video_output_path = create_video_from_content(
-        facts=actual_facts_with_audio, 
-        narration_audio_files=narration_audio_files, 
-        channel_config=config, 
-        channel_title=channel_name_arg
-    )
-    
-    for audio_f in narration_audio_files: 
-        if os.path.exists(audio_f):
-            try: os.remove(audio_f)
-            except Exception as e: logging.warning(f"Falha ao remover áudio temp {audio_f}: {e}")
+    # Calcula o tamanho do texto e a posição
+    try:
+        text_bbox = draw.textbbox((0, 0), wrapped_text, font=font) # Requer Pillow >= 8.0.0
+        text_width = text_bbox[2] - text_bbox[0]
+        text_height = text_bbox[3] - text_bbox[1]
+    except AttributeError: # Fallback para versões mais antigas do Pillow ou se textbbox não estiver disponível
+        text_width, text_height = draw.textsize(wrapped_text, font=font)
 
-    if not video_output_path: logging.error("Falha criar vídeo."); sys.exit(1)
 
-    title = config["video_title_template"].format(short_id=random.randint(100,999))
-    desc_fact_sample = actual_facts_with_audio[0] if actual_facts_with_audio else "Curiosidades incríveis!"
-    description = config["video_description_template"].format(fact_text_for_description=desc_fact_sample, facts_list="\n- ".join(actual_facts_with_audio))
-    
-    video_id_uploaded = upload_video(youtube_service, video_output_path, title, description,
-                                     config["video_tags_list"], config["category_id"], "public")
-    if video_id_uploaded:
-        logging.info(f"--- SUCESSO '{channel_name_arg}'! VÍDEO PÚBLICO ID: {video_id_uploaded} ---")
-        if os.path.exists(video_output_path): 
-            logging.info(f"Vídeo local {video_output_path} mantido para inspeção.")
+    pos_x_config, pos_y_config = config["text_position_for_image_placeholder"]
+
+    if pos_x_config == 'center':
+        x = (width - text_width) / 2
+    elif isinstance(pos_x_config, int):
+        x = pos_x_config
+    else: # default left
+        x = 50
+
+    if pos_y_config == 'center':
+        y = (height - text_height) / 2
+    elif pos_y_config == 'bottom':
+        y = height - text_height - 50 # 50px de margem inferior
+    elif pos_y_config == 'top':
+        y = 50 # 50px de margem superior
+    elif isinstance(pos_y_config, int):
+        y = pos_y_config
+    else: # default center
+        y = (height - text_height) / 2
+
+    # Adiciona um retângulo de fundo para o texto para melhor legibilidade
+    rect_x0 = x - 20  # Padding
+    rect_y0 = y - 20
+    rect_x1 = x + text_width + 20
+    rect_y1 = y + text_height + 20
+    draw.rectangle([rect_x0, rect_y0, rect_x1, rect_y1], fill=config["text_bg_color_for_image_placeholder"])
+
+    draw.text((x, y), wrapped_text, font=font, fill=config["text_color_for_image_placeholder"], align="center")
+
+    os.makedirs(os.path.dirname(image_path), exist_ok=True)
+    img.save(image_path)
+    print(f"INFO: Imagem placeholder salva em {image_path}")
+    return image_path
+
+
+def generate_audio_from_text(text, audio_path, lang="en"):
+    """Gera áudio a partir do texto usando gTTS e salva."""
+    try:
+        tts = gTTS(text=text, lang=lang, slow=False)
+        os.makedirs(os.path.dirname(audio_path), exist_ok=True)
+        tts.save(audio_path)
+        print(f"INFO: Áudio gerado para '{text[:30]}...' e salvo em {audio_path}")
+        return audio_path
+    except Exception as e:
+        print(f"ERRO ao gerar áudio para '{text[:30]}...': {e}")
+        return None
+
+def create_video_from_facts(facts, channel_name="default"):
+    """Cria um vídeo a partir de uma lista de fatos (texto, imagem, áudio)."""
+    config = CHANNEL_CONFIGS.get(channel_name, CHANNEL_CONFIGS["default"])
+    clips = []
+    project_id = os.getenv("GOOGLE_CLOUD_PROJECT") # Necessário para Vertex AI
+
+    for i, fact_text in enumerate(facts):
+        unique_id = f"{channel_name}_{int(time.time())}_{i}" # Adiciona timestamp e índice para unicidade
+        image_filename = f"image_{unique_id}.png"
+        audio_filename = f"audio_{unique_id}.mp3"
+
+        image_path_generated = os.path.join(GENERATED_IMAGES_DIR, image_filename)
+        audio_path_generated = os.path.join(GENERATED_AUDIO_DIR, audio_filename)
+
+        # 1. Gerar Imagem
+        generated_image_file = None
+        if VERTEX_AI_AVAILABLE and project_id:
+            style_keyword = random.choice(config["image_styles"])
+            image_prompt = f"{config['image_generation_prompt_prefix']} Fact: \"{fact_text}\". {style_keyword}."
+            generated_image_file = generate_image_with_vertex_ai(image_prompt, image_path_generated, project_id)
+
+        if not generated_image_file: # Fallback para placeholder
+            generated_image_file = create_placeholder_image_with_text(fact_text, image_path_generated, channel_name=channel_name)
+
+        if not generated_image_file or not os.path.exists(generated_image_file):
+            print(f"ERRO CRÍTICO: Não foi possível gerar ou encontrar a imagem para o fato: {fact_text}")
+            continue # Pula para o próximo fato
+
+        # 2. Gerar Áudio
+        audio_file = generate_audio_from_text(fact_text, audio_path_generated, lang=config["facts_language"])
+        if not audio_file or not os.path.exists(audio_file):
+            print(f"ERRO CRÍTICO: Não foi possível gerar ou encontrar o áudio para o fato: {fact_text}")
+            # Considerar criar um clipe silencioso ou pular
+            # Por enquanto, vamos pular este fato se o áudio falhar
+            if os.path.exists(generated_image_file): # Limpa a imagem gerada se o áudio falhar
+                try:
+                    os.remove(generated_image_file)
+                except OSError as e:
+                    print(f"AVISO: Não foi possível remover a imagem órfã {generated_image_file}: {e}")
+            continue
+
+
+        # 3. Criar Clipe de Vídeo
+        try:
+            img_clip = ImageClip(generated_image_file).set_duration(IMAGE_DURATION_SECONDS).set_fps(FPS_VIDEO)
+            audio_clip_moviepy = AudioFileClip(audio_file)
+
+            # Ajusta a duração do clipe de imagem para a duração do áudio, se o áudio for mais longo
+            # Ou mantém IMAGE_DURATION_SECONDS se o áudio for mais curto, o áudio vai parar.
+            # Para Shorts, idealmente o áudio e imagem têm durações próximas.
+            actual_duration = max(IMAGE_DURATION_SECONDS, audio_clip_moviepy.duration)
+            actual_duration = min(actual_duration, 15) # Limita a 15s para shorts, pode ajustar
+
+            img_clip = img_clip.set_duration(actual_duration)
+            audio_clip_moviepy = audio_clip_moviepy.set_duration(min(audio_clip_moviepy.duration, actual_duration))
+
+
+            video_clip = img_clip.set_audio(audio_clip_moviepy)
+            clips.append(video_clip)
+            print(f"INFO: Clipe criado para: {fact_text[:30]}... com duração: {actual_duration:.2f}s")
+
+        except Exception as e:
+            print(f"ERRO ao criar clipe para '{fact_text[:30]}...': {e}")
+            # Limpeza de arquivos gerados para este fato em caso de erro na criação do clipe
+            if os.path.exists(generated_image_file):
+                try: os.remove(generated_image_file)
+                except OSError: pass
+            if os.path.exists(audio_file):
+                try: os.remove(audio_file)
+                except OSError: pass
+
+
+    if not clips:
+        print("ERRO: Nenhum clipe foi gerado. Saindo.")
+        return None
+
+    final_video = concatenate_videoclips(clips, method="compose")
+    video_timestamp = int(time.time()) # Timestamp para nome de arquivo único
+    video_filename = f"{channel_name}_{video_timestamp}.mp4"
+    output_video_path = os.path.join(GENERATED_VIDEOS_DIR, video_filename)
+
+    os.makedirs(GENERATED_VIDEOS_DIR, exist_ok=True)
+    try:
+        print(f"INFO: Montando vídeo final em {output_video_path}...")
+        final_video.write_videofile(output_video_path, codec="libx264", audio_codec="aac", fps=FPS_VIDEO)
+        print(f"INFO: Vídeo final gerado: {output_video_path}")
+        return output_video_path
+    except Exception as e:
+        print(f"ERRO CRÍTICO ao escrever o arquivo de vídeo final: {e}")
+        return None
+    finally:
+        # Limpeza dos clipes individuais de áudio e imagem após a criação do vídeo final
+        for clip_obj in clips: # MoviePy clips, não os caminhos dos arquivos
+            # A limpeza dos arquivos originais de imagem e áudio pode ser feita aqui
+            # ou idealmente, guardar os caminhos e limpá-los.
+            # Por agora, os arquivos permanecem em generated_images e generated_audio
+            # para depuração, mas podem ser removidos se necessário.
+            if hasattr(clip_obj, 'img_path_original') and os.path.exists(clip_obj.img_path_original):
+                try: os.remove(clip_obj.img_path_original)
+                except OSError: pass
+            if hasattr(clip_obj, 'audio_path_original') and os.path.exists(clip_obj.audio_path_original):
+                try: os.remove(clip_obj.audio_path_original)
+                except OSError: pass
+        print("INFO: Limpeza (potencial) de arquivos de clipe individuais concluída.")
+
+
+# --- Funções do YouTube ---
+def generate_video_title(facts, channel_name="default"):
+    """Gera um título para o vídeo."""
+    if not facts:
+        return f"{channel_name.capitalize()} Short Video - {datetime.date.today().strftime('%Y-%m-%d')}"
+
+    # Usa o primeiro fato para gerar um título mais descritivo
+    first_fact = facts[0]
+    # Simplifica o fato para um título, pegando as primeiras palavras ou uma parte chave
+    title_keywords = " ".join(first_fact.split()[:5]) # Pega as primeiras 5 palavras
+    if len(first_fact.split()) > 5:
+        title_keywords += "..."
+
+    # Remove caracteres que podem não ser ideais para títulos (ex: ponto final)
+    title_keywords = title_keywords.replace('.', '')
+
+    # Título com foco no conteúdo
+    generated_title = f"Curiosidade Incrível: {title_keywords.strip()}"
+
+    # Limita o tamanho do título (YouTube tem limite, geralmente ~100 caracteres)
+    max_title_length = 90 # Deixa uma margem
+    if len(generated_title) > max_title_length:
+        generated_title = generated_title[:max_title_length-3] + "..."
+
+    print(f"INFO: Título gerado para o vídeo: '{generated_title}'")
+    return generated_title
+
+
+def generate_video_description(facts, channel_name="default"):
+    """Gera uma descrição para o vídeo."""
+    config = CHANNEL_CONFIGS.get(channel_name, CHANNEL_CONFIGS["default"])
+    # Usa o primeiro fato para a descrição se a lista de fatos não estiver vazia
+    first_fact_text = facts[0] if facts else "Fatos interessantes!"
+    # Substitui placeholders no template
+    description = config["youtube_description_template"].replace("{fact_text}", first_fact_text)
+    description = description.replace("#[CHANNEL_NAME]", f"#{channel_name.replace(' ', '')}") # Garante que o nome do canal seja uma hashtag válida
+    return description
+
+def upload_video_to_youtube(video_path, title, description, category_id, tags, privacy_status="public"):
+    """Faz upload de um vídeo para o YouTube."""
+    creds = get_youtube_credentials()
+    if not creds:
+        print("ERRO CRÍTICO: Falha ao obter credenciais do YouTube. Upload cancelado.")
+        return None
+
+    try:
+        youtube = build('youtube', 'v3', credentials=creds)
+        print(f"INFO: Fazendo upload do vídeo '{video_path}' para o YouTube com o título '{title}'...")
+
+        body = {
+            'snippet': {
+                'title': title,
+                'description': description,
+                'tags': tags,
+                'categoryId': category_id
+            },
+            'status': {
+                'privacyStatus': privacy_status
+            }
+        }
+
+        media_file = MediaFileUpload(video_path, chunksize=-1, resumable=True)
+
+        # A variável 'response' aqui estava causando o NameError se a request falhasse antes da atribuição
+        upload_request = youtube.videos().insert(
+            part=','.join(body.keys()),
+            body=body,
+            media_body=media_file
+        )
+
+        response = None
+        while response is None:
+            try:
+                status, response = upload_request.next_chunk()
+                if status:
+                    print(f"INFO: Upload {int(status.progress() * 100)}% completo.")
+            except Exception as e:
+                print(f"ERRO durante o upload do chunk: {e}")
+                # Adicionar uma pausa e tentar novamente pode ser útil aqui, ou um limite de tentativas
+                time.sleep(5) # Pausa de 5s antes de tentar o próximo chunk novamente (ou falhar)
+
+        if response and 'id' in response:
+            video_id = response['id']
+            print(f"INFO: Upload completo! Vídeo ID: {video_id}")
+            print(f"INFO: Link do vídeo: https://www.youtube.com/watch?v={video_id}")
+            return video_id
+        else:
+            print(f"ERRO CRÍTICO: O upload falhou ou não retornou um ID de vídeo. Resposta: {response}")
+            return None
+
+    except Exception as e:
+        print(f"ERRO CRÍTICO durante o processo de upload do YouTube: {e}")
+        return None
+
+# --- Função Principal ---
+def main():
+    parser = argparse.ArgumentParser(description="Automatiza a criação e upload de vídeos de curiosidades para o YouTube.")
+    parser.add_argument("--channel", type=str, default="default", help="Nome do canal para usar configurações específicas (ex: fizzquirk).")
+    parser.add_argument("--num_facts", type=int, default=1, help="Número de fatos para incluir no vídeo (máx 3-5 recomendado para Shorts).")
+    args = parser.parse_args()
+
+    print(f"--- Iniciando Geração de Vídeo para o Canal: {args.channel} ---")
+
+    # Criação dos diretórios necessários
+    os.makedirs(GENERATED_VIDEOS_DIR, exist_ok=True)
+    os.makedirs(GENERATED_IMAGES_DIR, exist_ok=True)
+    os.makedirs(GENERATED_AUDIO_DIR, exist_ok=True)
+    os.makedirs(ASSETS_DIR, exist_ok=True)
+    os.makedirs(os.path.join(ASSETS_DIR, "fonts"), exist_ok=True) # Garante que assets/fonts exista
+
+
+    facts = get_facts_for_video(num_facts=args.num_facts, channel_name=args.channel)
+    if not facts:
+        print("ERRO: Nenhum fato foi obtido. Encerrando.")
+        return
+
+    video_file_path = create_video_from_facts(facts, channel_name=args.channel)
+
+    if video_file_path and os.path.exists(video_file_path):
+        print(f"INFO: Vídeo gerado com sucesso: {video_file_path}")
+        channel_config = CHANNEL_CONFIGS.get(args.channel, CHANNEL_CONFIGS["default"])
+
+        video_title = generate_video_title(facts, channel_name=args.channel)
+        video_description = generate_video_description(facts, channel_name=args.channel)
+
+        upload_video_to_youtube(
+            video_file_path,
+            video_title,
+            video_description,
+            channel_config["youtube_video_category_id"],
+            channel_config["youtube_tags"],
+            channel_config["youtube_privacy_status"]
+        )
+        # Considere remover o vídeo local após o upload se não precisar mais dele
+        # try:
+        #     os.remove(video_file_path)
+        #     print(f"INFO: Vídeo local {video_file_path} removido após upload.")
+        # except OSError as e:
+        #     print(f"AVISO: Não foi possível remover o vídeo local {video_file_path}: {e}")
     else:
-        logging.error(f"--- FALHA upload '{channel_name_arg}'. ---"); sys.exit(1)
-    
-    logging.info(f"--- Fim do processo para '{channel_name_arg}' ---")
+        print("ERRO CRÍTICO: Falha ao gerar o arquivo de vídeo. Upload cancelado.")
+
+    print(f"--- Processo para o Canal: {args.channel} Concluído ---")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="YouTube Automation Script")
-    parser.add_argument("--channel", required=True, help="Nome do canal (chave em CHANNEL_CONFIGS).")
-    args = None
-    try:
-        args = parser.parse_args()
-        main(args.channel)
-    except SystemExit as e:
-        if e.code != 0: logging.error(f"Script encerrado com erro (código {e.code}).")
-        if e.code != 0: raise 
-    except Exception as e_main_block:
-        logging.error(f"ERRO INESPERADO NO BLOCO PRINCIPAL: {e_main_block}", exc_info=True)
-        sys.exit(2)
+    main()

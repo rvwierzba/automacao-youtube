@@ -525,4 +525,9 @@ if __name__ == "__main__":
         args = parser.parse_args()
         main(args.channel)
     except SystemExit as e:
-        if e.code != 0: logging.error(f"Script encerr
+        if e.code != 0: logging.error(f"Script encerrado com erro (código {e.code}).")
+        # Não relança sys.exit(0) para evitar que a Action pense que é erro.
+        if e.code != 0: raise 
+    except Exception as e_main_block:
+        logging.error(f"ERRO INESPERADO NO BLOCO PRINCIPAL: {e_main_block}", exc_info=True)
+        sys.exit(2)

@@ -63,7 +63,7 @@ MAX_CHARS_PER_LINE_IMAGE = 40
 CHANNEL_CONFIGS = {
     "fizzquirk": {
         "video_description_template": "Astounding fact of the day from FizzQuirk!\n\nToday's Fact:\n{fact_text_for_description}\n\n#FizzQuirk #FunFacts #Shorts #AmazingFacts #Trivia #DidYouKnow",
-        "video_tags_list": ["fizzquirk", "facts", "trivia", "shorts", "fun facts", "learning", "amazing facts", "did you know"], # Chave: video_tags_list
+        "video_tags_list": ["fizzquirk", "facts", "trivia", "shorts", "fun facts", "learning", "amazing facts", "did you know"],
         "music_options": [
             "animado.mp3", 
             "fundo_misterioso.mp3",
@@ -76,8 +76,8 @@ CHANNEL_CONFIGS = {
         "num_facts_to_use": 3,
         "duration_per_fact_slide_min": 6,
         "pause_after_fact": 1.0,
-        "category_id": "27", # Chave: category_id
-        "youtube_privacy_status": "public", # Chave: youtube_privacy_status
+        "category_id": "27", 
+        "youtube_privacy_status": "public", 
         "gcp_project_id": os.environ.get("GCP_PROJECT_ID"),
         "gcp_location": os.environ.get("GCP_LOCATION", "us-central1"),
         "imagen_model_name": "imagegeneration@006" 
@@ -107,7 +107,7 @@ def get_authenticated_service(client_secrets_path, token_path):
         
         if not creds or not creds.valid: 
             if not os.path.exists(client_secrets_path):
-                logging.error(f"ERRO CRÍTICO: client_secret.json não encontrado em {client_secrets_path}")
+                logging.error(f"ERRO CRÍTICO: client_secrets.json não encontrado em {client_secrets_path}")
                 return None
             logging.info("Executando novo fluxo de autorização (pode ser interativo para ambiente local)...")
             try:
@@ -200,6 +200,7 @@ def generate_dynamic_image_placeholder(fact_text, width, height, font_path_confi
                 logging.info(f"Usando fonte customizada para placeholder: {font_path_config} com tamanho {current_font_size}")
             else:
                 if font_path_config: logging.warning(f"Fonte '{font_path_config}' não encontrada.")
+                # Tenta usar Arial como fallback antes do default do Pillow
                 try:
                     arial_path = os.path.join(ASSETS_DIR, "fonts", "arial.ttf") 
                     if os.path.exists(arial_path):
@@ -439,8 +440,9 @@ def generate_video_title(facts, channel_name="default"):
     logging.info(f"Título gerado: '{generated_title}'")
     return generated_title
 
-def generate_video_description(facts, config, channel_name_arg):
+def generate_video_description(facts, config, channel_name_arg): # Função está aqui
     """Gera uma descrição para o vídeo."""
+    # 'config' aqui é o dicionário de configuração do canal específico
     template = config.get("video_description_template", "Interesting facts! #shorts\n\nFact:\n{fact_text_for_description}")
     first_fact_text = facts[0] if facts else "Fatos incríveis e curiosidades!"
     description = template.format(fact_text_for_description=first_fact_text)
@@ -547,12 +549,18 @@ def main(channel_name_arg):
         channel_title=channel_name_arg
     )
     
-    for audio_f in narration_audio_files: 
+    # Limpeza dos áudios de narração individuais (esta linha estava com o erro de sintaxe no seu log)
+    for audio_f in narration_audio_files:
         if os.path.exists(audio_f):
-            try: os.remove(audio_f); logging.info(f"Áudio temp removido: {audio_f}")
-            except Exception as e: logging.warning(f"Falha ao remover áudio temp {audio_f}: {e}")
+            try: 
+                os.remove(audio_f)
+                logging.info(f"Áudio temp removido: {audio_f}")
+            except Exception as e: 
+                logging.warning(f"Falha ao remover áudio temp {audio_f}: {e}")
 
-    if not video_output_path: logging.error("Falha criar vídeo."); sys.exit(1)
+    if not video_output_path: 
+        logging.error("Falha criar vídeo.")
+        sys.exit(1)
 
     video_title = generate_video_title(actual_facts_with_audio, channel_name=channel_name_arg)
     video_description = generate_video_description(actual_facts_with_audio, config, channel_name_arg) 
@@ -562,9 +570,9 @@ def main(channel_name_arg):
         video_output_path, 
         video_title,
         video_description, 
-        config.get("video_tags_list", []),       # Chave correta e .get()
-        config.get("category_id"),               # Chave correta e .get()
-        config.get("youtube_privacy_status", "public") # Chave correta e .get()
+        config.get("video_tags_list", []),       # Usa "video_tags_list"
+        config.get("category_id"),               # Usa "category_id"
+        config.get("youtube_privacy_status", "public") # Usa "youtube_privacy_status"
     )
     if video_id_uploaded:
         logging.info(f"--- SUCESSO! Canal '{channel_name_arg}'. VÍDEO PÚBLICO ID: {video_id_uploaded} ---")

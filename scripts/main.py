@@ -6,29 +6,23 @@ import sys
 import time
 import random
 import numpy as np
-import datetime # Adicionado para a função de título/descrição
+import datetime 
 
-# Para geração de áudio
 from gtts import gTTS
-
-# Para edição de vídeo
 from moviepy.editor import (AudioFileClip, TextClip, CompositeVideoClip,
                             ColorClip, ImageClip, CompositeAudioClip,
                             concatenate_videoclips, concatenate_audioclips, AudioClip)
 from moviepy.config import change_settings
 import moviepy.config as MOPY_CONFIG
 
-# Para o placeholder de imagem e manipulação
 from PIL import Image as PILImage, ImageDraw as PILImageDraw, ImageFont as PILImageFont
 
-# Para API do YouTube
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.http import MediaFileUpload
 
-# Tenta importar a biblioteca do Vertex AI (para Imagen)
 try:
     from google.cloud import aiplatform
     VERTEX_AI_SDK_AVAILABLE = True
@@ -42,7 +36,6 @@ except ImportError:
 logging.basicConfig(level=logging.INFO, stream=sys.stdout, format='%(asctime)s - %(levelname)s - %(message)s')
 SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
 
-# --- Constantes e Configurações ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(CURRENT_DIR) 
 
@@ -63,7 +56,7 @@ MAX_CHARS_PER_LINE_IMAGE = 40
 CHANNEL_CONFIGS = {
     "fizzquirk": {
         "video_description_template": "Astounding fact of the day from FizzQuirk!\n\nToday's Fact:\n{fact_text_for_description}\n\n#FizzQuirk #FunFacts #Shorts #AmazingFacts #Trivia #DidYouKnow",
-        "video_tags_list": ["fizzquirk", "facts", "trivia", "shorts", "fun facts", "learning", "amazing facts", "did you know"],
+        "video_tags_list": ["fizzquirk", "facts", "trivia", "shorts", "fun facts", "learning", "amazing facts", "did you know"], # CHAVE: video_tags_list
         "music_options": [
             "animado.mp3", 
             "fundo_misterioso.mp3",
@@ -76,8 +69,8 @@ CHANNEL_CONFIGS = {
         "num_facts_to_use": 3,
         "duration_per_fact_slide_min": 6,
         "pause_after_fact": 1.0,
-        "category_id": "27", # CHAVE CORRETA A SER USADA
-        "youtube_privacy_status": "public", # CHAVE CORRETA A SER USADA
+        "category_id": "27", # CHAVE: category_id
+        "youtube_privacy_status": "public", # CHAVE: youtube_privacy_status
         "gcp_project_id": os.environ.get("GCP_PROJECT_ID"),
         "gcp_location": os.environ.get("GCP_LOCATION", "us-central1"),
         "imagen_model_name": "imagegeneration@006" 
@@ -107,7 +100,7 @@ def get_authenticated_service(client_secrets_path, token_path):
         
         if not creds or not creds.valid: 
             if not os.path.exists(client_secrets_path):
-                logging.error(f"ERRO CRÍTICO: client_secret.json não encontrado em {client_secrets_path}")
+                logging.error(f"ERRO CRÍTICO: client_secrets.json não encontrado em {client_secrets_path}")
                 return None
             logging.info("Executando novo fluxo de autorização (pode ser interativo para ambiente local)...")
             try:
@@ -137,6 +130,7 @@ def get_authenticated_service(client_secrets_path, token_path):
     return build('youtube', 'v3', credentials=creds)
 
 def get_facts_for_video(keywords, language, num_facts=1):
+    # ... (código mantido) ...
     logging.info(f"Obtendo {num_facts} fatos para idioma '{language}' com keywords: {keywords}")
     facts_db = {
         "en": [
@@ -166,6 +160,7 @@ def get_facts_for_video(keywords, language, num_facts=1):
     return random.sample(available_facts, num_facts)
 
 def generate_audio_from_text(text, lang, audio_file_path):
+    # ... (código mantido) ...
     logging.info(f"Gerando áudio para: '{text[:50]}...' (Idioma: {lang})")
     try:
         tts = gTTS(text=text, lang=lang, slow=False)
@@ -180,8 +175,9 @@ def generate_audio_from_text(text, lang, audio_file_path):
     return None
 
 def generate_dynamic_image_placeholder(fact_text, width, height, font_path_config, duration, fps_value):
+    # ... (código mantido) ...
     logging.info(f"Gerando imagem PLACEHOLDER para: '{fact_text[:30]}...'")
-    temp_img_path = None
+    temp_img_path = None 
     try:
         r1, g1, b1 = random.randint(40, 120), random.randint(40, 120), random.randint(40, 120)
         r2, g2, b2 = min(255, r1 + random.randint(40,80)), min(255, g1 + random.randint(40,80)), min(255, b1 + random.randint(40,80))
@@ -202,15 +198,14 @@ def generate_dynamic_image_placeholder(fact_text, width, height, font_path_confi
             else: # Fallback para Arial se nenhuma fonte customizada ou se não encontrada
                 if font_path_config: logging.warning(f"Fonte '{font_path_config}' não encontrada.")
                 try:
-                    # Tenta carregar Arial (comum em muitos sistemas)
-                    arial_path = os.path.join(ASSETS_DIR, "fonts", "arial.ttf") # Assumindo que você pode adicionar arial.ttf
+                    arial_path = os.path.join(ASSETS_DIR, "fonts", "arial.ttf")
                     if os.path.exists(arial_path):
                         font_to_use = PILImageFont.truetype(arial_path, current_font_size)
                         logging.info(f"Usando fonte Arial de '{arial_path}' para placeholder.")
-                    else: # Se nem Arial estiver lá, usa a default do Pillow
+                    else: 
                         logging.warning(f"Arial não encontrada em '{arial_path}'. Usando fonte padrão Pillow.")
                         font_to_use = PILImageFont.load_default(size=current_font_size)
-                except IOError: # Captura erro se a fonte Arial também não for carregável
+                except IOError: 
                     logging.warning(f"Erro ao carregar Arial. Usando fonte padrão Pillow.")
                     font_to_use = PILImageFont.load_default(size=current_font_size)
         except Exception as e_font: 
@@ -264,6 +259,7 @@ def generate_dynamic_image_placeholder(fact_text, width, height, font_path_confi
         return ColorClip(size=(width, height), color=(random.randint(50,100),random.randint(50,100),random.randint(50,100)), duration=duration).set_fps(fps_value), None
 
 def generate_image_with_vertex_ai_imagen(fact_text, duration, config, font_path_for_fallback, fps_value):
+    # ... (código mantido) ...
     logging.info(f"Tentando gerar imagem com Vertex AI para: '{fact_text[:30]}...'")
     project_id = config.get("gcp_project_id")
     location = config.get("gcp_location")
@@ -314,14 +310,14 @@ def generate_image_with_vertex_ai_imagen(fact_text, duration, config, font_path_
         logging.error(f"Erro ao gerar imagem com Vertex AI Imagen: {e}", exc_info=True); return generate_dynamic_image_placeholder(fact_text, 1080, 1920, font_path_for_fallback, duration, fps_value)
 
 def create_video_from_content(facts, narration_audio_files, channel_config, channel_title="Video"):
+    # ... (código mantido) ...
     logging.info(f"--- Criando vídeo para '{channel_title}' com {len(facts)} fatos ---")
     W, H = 1080, 1920; FPS_VIDEO = 24
     default_slide_duration = channel_config.get("duration_per_fact_slide_min", 6)
     pause_after_fact = channel_config.get("pause_after_fact", 1.0)
     font_for_placeholder = channel_config.get("text_font_path_for_image_placeholder")
-    if font_for_placeholder and not os.path.isabs(font_for_placeholder): # Constrói caminho absoluto se relativo
+    if font_for_placeholder and not os.path.isabs(font_for_placeholder): 
         font_for_placeholder = os.path.join(ASSETS_DIR, "fonts", os.path.basename(font_for_placeholder))
-
 
     video_slide_clips = []
     audio_slide_segments = [] 
@@ -418,9 +414,9 @@ def create_video_from_content(facts, narration_audio_files, channel_config, chan
             
     return video_output_path
 
-def generate_video_title(facts, channel_name="default"):
+def generate_video_title(facts, channel_name="default"): # Definição da função
     if not facts:
-        timestamp = datetime.date.today().strftime('%Y-%m-%d')
+        timestamp = datetime.date.today().strftime('%Y-%m-%d') # Uso de datetime
         return f"{channel_name.capitalize()} Curiosidades - {timestamp}"
 
     first_fact = facts[0]
@@ -443,7 +439,7 @@ def generate_video_title(facts, channel_name="default"):
     logging.info(f"Título gerado: '{generated_title}'")
     return generated_title
 
-def generate_video_description(facts, config, channel_name_arg): # Função DEFINIDA
+def generate_video_description(facts, config, channel_name_arg): # Definição da função que faltava
     """Gera uma descrição para o vídeo."""
     template = config.get("video_description_template", "Interesting facts! #shorts\n\nFact:\n{fact_text_for_description}")
     first_fact_text = facts[0] if facts else "Fatos incríveis e curiosidades!"
@@ -478,7 +474,7 @@ def upload_video(youtube_service, video_path, title, description, tags, category
             video_id = response_final_upload.get('id')
             if video_id:
                 logging.info(f"Upload completo! Vídeo ID: {video_id}")
-                logging.info(f"Link (pode levar alguns minutos para ficar ativo): https://www.youtube.com/watch?v={video_id}") # Mantido link original
+                logging.info(f"Link (pode levar alguns minutos para ficar ativo): https://www.youtube.com/watch?v={video_id}") 
                 return video_id
             else:
                 logging.error(f"Upload pode ter falhado ou API não retornou ID. Resposta: {response_final_upload}")
@@ -540,55 +536,4 @@ def main(channel_name_arg):
     
     if not narration_audio_files or len(narration_audio_files) != len(actual_facts_with_audio) or not actual_facts_with_audio :
          logging.error(f"Geração de áudio inconsistente. Fatos válidos: {len(actual_facts_with_audio)}, Áudios: {len(narration_audio_files)}. Abortando.")
-         for audio_f in narration_audio_files: 
-             if os.path.exists(audio_f): os.remove(audio_f)
-         sys.exit(1)
-
-    video_output_path = create_video_from_content(
-        facts=actual_facts_with_audio, 
-        narration_audio_files=narration_audio_files, 
-        channel_config=config, 
-        channel_title=channel_name_arg
-    )
-    
-    for audio_f in narration_audio_files: 
-        if os.path.exists(audio_f):
-            try: os.remove(audio_f); logging.info(f"Áudio temp removido: {audio_f}")
-            except Exception as e: logging.warning(f"Falha ao remover áudio temp {audio_f}: {e}")
-
-    if not video_output_path: logging.error("Falha criar vídeo."); sys.exit(1)
-
-    video_title = generate_video_title(actual_facts_with_audio, channel_name=channel_name_arg)
-    video_description = generate_video_description(actual_facts_with_audio, config, channel_name_arg) # Chamada corrigida
-    
-    # CORRIGIDO: Usando as chaves corretas da config
-    video_id_uploaded = upload_video(youtube_service, video_output_path, video_title,
-                                     video_description, 
-                                     config.get("video_tags_list"),       
-                                     config.get("category_id"),          
-                                     config.get("youtube_privacy_status", "public"))
-    if video_id_uploaded:
-        logging.info(f"--- SUCESSO! Canal '{channel_name_arg}'. VÍDEO PÚBLICO ID: {video_id_uploaded} ---")
-        if os.path.exists(video_output_path): 
-            logging.info(f"Vídeo local {video_output_path} mantido para inspeção.")
-    else:
-        logging.error(f"--- FALHA no upload para o canal '{channel_name_arg}'. ---"); sys.exit(1)
-    
-    logging.info(f"--- Fim do processo para o canal '{channel_name_arg}' ---")
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Automatiza a criação e upload de vídeos de curiosidades para o YouTube.")
-    parser.add_argument("--channel", required=True, help="Nome do canal (chave em CHANNEL_CONFIGS).")
-    args = None
-    try:
-        args = parser.parse_args()
-        main(args.channel)
-    except SystemExit as e:
-        if e.code is None or e.code == 0: 
-             logging.info(f"Script para '{args.channel if args else 'N/A'}' concluído (código de saída {e.code}).")
-        else: 
-             logging.error(f"Script para '{args.channel if args else 'N/A'}' encerrado com erro (código {e.code}).")
-             raise 
-    except Exception as e_main_block:
-        logging.error(f"ERRO INESPERADO NO BLOCO PRINCIPAL para '{args.channel if args else 'N/A'}': {e_main_block}", exc_info=True)
-        sys.exit(2)
+         for

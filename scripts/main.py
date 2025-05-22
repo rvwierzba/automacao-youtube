@@ -22,12 +22,13 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.http import MediaFileUpload
 
+# Tenta importar a biblioteca do Vertex AI (para Imagen)
 try:
     from google.cloud import aiplatform
-    # from google.cloud.aiplatform_v1beta1.types import PredictRequest # Pode ser necessário para chamadas mais complexas
-    # from google.cloud.aiplatform_v1beta1.services.prediction_service import PredictionServiceClient # Idem
-    # from google.protobuf import json_format # Idem
-    # from google.protobuf.struct_pb2 import Value # Idem
+    # from google.cloud.aiplatform_v1beta1.types import PredictRequest # Descomente se necessário para chamadas mais complexas
+    # from google.cloud.aiplatform_v1beta1.services.prediction_service import PredictionServiceClient # Descomente se necessário
+    # from google.protobuf import json_format # Descomente se necessário
+    # from google.protobuf.struct_pb2 import Value # Descomente se necessário
     VERTEX_AI_SDK_AVAILABLE = True
     logging.info("Biblioteca google-cloud-aiplatform encontrada e importada.")
 except ImportError:
@@ -35,30 +36,51 @@ except ImportError:
     logging.warning("Biblioteca google-cloud-aiplatform não encontrada. Geração de imagem com Vertex AI Imagen estará desabilitada.")
     logging.warning("Para habilitar, adicione 'google-cloud-aiplatform' ao requirements.txt e instale.")
 
+
 logging.basicConfig(level=logging.INFO, stream=sys.stdout, format='%(asctime)s - %(levelname)s - %(message)s')
 SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
 
+# --- Constantes e Configurações ---
+# Ajusta CURRENT_DIR para o diretório onde o script está (scripts)
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+# Ajusta os caminhos para serem relativos ao diretório PAI do diretório 'scripts'
+BASE_DIR = os.path.dirname(CURRENT_DIR) # Este é o diretório raiz do projeto
+
+CREDENTIALS_DIR = os.path.join(BASE_DIR, 'credentials')
+CLIENT_SECRET_FILE = os.path.join(CREDENTIALS_DIR, 'client_secret.json')
+TOKEN_FILE = os.path.join(CREDENTIALS_DIR, 'token.json')
+
+GENERATED_VIDEOS_DIR = os.path.join(BASE_DIR, 'generated_videos')
+GENERATED_IMAGES_DIR = os.path.join(BASE_DIR, 'generated_images') # Para imagens temporárias
+GENERATED_AUDIO_DIR = os.path.join(BASE_DIR, 'temp_audio') # Renomeado para clareza e consistência
+ASSETS_DIR = os.path.join(BASE_DIR, 'assets')
+
+FPS_VIDEO = 24
+IMAGE_DURATION_SECONDS = 5
+MAX_WORDS_PER_LINE_TTS = 10 
+MAX_CHARS_PER_LINE_IMAGE = 40
+
 CHANNEL_CONFIGS = {
     "fizzquirk": {
-        "video_title_template": "FizzQuirk Fact Shorts! #{short_id}", # O título será alterado pela função generate_video_title
+        "video_title_template": "FizzQuirk Fact Shorts! #{short_id}", # Será sobrescrito pela função generate_video_title
         "video_description_template": "Astounding fact of the day by FizzQuirk!\n\nFact:\n{fact_text_for_description}\n\n#FizzQuirk #Shorts #AmazingFacts #Trivia #FunFacts",
         "video_tags_list": ["fizzquirk", "facts", "trivia", "shorts", "fun facts", "learning", "amazing facts"],
         "music_options": [
-            "assets/music/animado.mp3",
-            "assets/music/fundo_misterioso.mp3",
-            "assets/music/tema_calmo.mp3"
+            "animado.mp3", # Apenas o nome do arquivo, o caminho será construído
+            "fundo_misterioso.mp3",
+            "tema_calmo.mp3"
         ],
         "default_music_if_list_empty": None,
         "music_volume": 0.07,
         "gtts_language": "en",
-        "text_font_path_for_image_placeholder": None, 
+        "text_font_path_for_image_placeholder": None, # Usará a fonte padrão do Pillow
         "num_facts_to_use": 3,
         "duration_per_fact_slide_min": 6,
         "pause_after_fact": 1.0,
         "category_id": "27",
         "gcp_project_id": os.environ.get("GCP_PROJECT_ID"),
         "gcp_location": os.environ.get("GCP_LOCATION", "us-central1"),
-        "imagen_model_name": "imagegeneration@006"
+        "imagen_model_name": "imagegeneration@006" 
     },
 }
 
@@ -90,7 +112,7 @@ def get_authenticated_service(client_secrets_path, token_path):
             logging.info("Executando novo fluxo de autorização (pode ser interativo para ambiente local)...")
             try:
                 flow = InstalledAppFlow.from_client_secrets_file(client_secrets_path, SCOPES)
-                if "GITHUB_ACTIONS" in os.environ:
+                if "GITHUB_ACTIONS" in os.environ: 
                      logging.error("ERRO: Novo fluxo de autorização interativo não é suportado em CI. Pré-autorize o token.json.")
                      return None
                 creds = flow.run_local_server(port=0) 
@@ -143,17 +165,16 @@ def get_facts_for_video(keywords, language, num_facts=1):
         return available_facts
     return random.sample(available_facts, num_facts)
 
-def generate_audio_from_text(text, lang, output_filename):
+def generate_audio_from_text(text, lang, audio_file_path): # Recebe o caminho completo
     logging.info(f"Gerando áudio para: '{text[:50]}...' (Idioma: {lang})")
     try:
         tts = gTTS(text=text, lang=lang, slow=False)
-        output_dir = "temp_audio"; os.makedirs(output_dir, exist_ok=True)
-        audio_path = os.path.join(output_dir, output_filename)
-        tts.save(audio_path)
-        if os.path.exists(audio_path) and os.path.getsize(audio_path) > 0:
-            logging.info(f"Áudio salvo em: {audio_path}")
-            return audio_path
-        logging.error(f"Falha ao salvar áudio ou arquivo vazio: {audio_path}")
+        os.makedirs(os.path.dirname(audio_file_path), exist_ok=True) # Garante que o diretório existe
+        tts.save(audio_file_path)
+        if os.path.exists(audio_file_path) and os.path.getsize(audio_file_path) > 0:
+            logging.info(f"Áudio salvo em: {audio_file_path}")
+            return audio_file_path
+        logging.error(f"Falha ao salvar áudio ou arquivo vazio: {audio_file_path}")
     except Exception as e:
         logging.error(f"Erro em gTTS para '{lang}': {e}", exc_info=True)
     return None
@@ -221,7 +242,7 @@ def generate_dynamic_image_placeholder(fact_text, width, height, font_path_confi
             draw.text((x_text, current_y), line, font=font_to_use, fill=text_color, align="center")
             current_y += line_heights[i] + spacing
 
-        temp_img_dir = "temp_images"; os.makedirs(temp_img_dir, exist_ok=True)
+        temp_img_dir = GENERATED_IMAGES_DIR; os.makedirs(temp_img_dir, exist_ok=True) # Usa pasta global
         temp_img_path = os.path.join(temp_img_dir, f"placeholder_{random.randint(1000,9999)}_{int(time.time()*1000)}.png")
         img.save(temp_img_path)
         image_clip = ImageClip(temp_img_path).set_duration(duration).set_fps(fps_value) 
@@ -259,7 +280,7 @@ def generate_image_with_vertex_ai_imagen(fact_text, duration, config, font_path_
         
         if response.images:
             image_obj = response.images[0]
-            temp_img_dir = "temp_images_vertex"; os.makedirs(temp_img_dir, exist_ok=True)
+            temp_img_dir = GENERATED_IMAGES_DIR; os.makedirs(temp_img_dir, exist_ok=True) # Usa pasta global
             gen_img_path = os.path.join(temp_img_dir, f"vertex_img_{int(time.time()*1000)}.png")
             
             if hasattr(image_obj, '_image_bytes') and image_obj._image_bytes:
@@ -288,10 +309,9 @@ def create_video_from_content(facts, narration_audio_files, channel_config, chan
     font_for_placeholder = channel_config.get("text_font_path_for_image_placeholder")
 
     video_slide_clips = []
-    audio_slide_segments_for_concat = [] # Nome da lista para os segmentos de áudio de cada slide
+    audio_slide_segments = [] # CORRIGIDO: Lista inicializada
     temp_image_paths_to_clean = []
-    current_timeline_pos = 0.0
-
+    
     for i, fact_text in enumerate(facts):
         narration_file = narration_audio_files[i]
         if not (narration_file and os.path.exists(narration_file) and os.path.getsize(narration_file) > 0):
@@ -309,7 +329,6 @@ def create_video_from_content(facts, narration_audio_files, channel_config, chan
             logging.error(f"Imagem nula para '{fact_text[:30]}...'. Pulando."); continue
 
         image_clip_result = image_clip_result.set_duration(slide_duration).set_fps(FPS_VIDEO)
-        # Não precisamos de set_start aqui se vamos usar concatenate_videoclips
         video_slide_clips.append(image_clip_result) 
 
         narration_part_for_slide = narration_clip_instance.subclip(0, min(narration_clip_instance.duration, slide_duration))
@@ -324,28 +343,25 @@ def create_video_from_content(facts, narration_audio_files, channel_config, chan
         else:
             current_segment_audio = narration_part_for_slide
         
-        audio_slide_segments_for_concat.append(current_segment_audio) # Adiciona à lista correta
-        # current_timeline_pos não é mais necessário aqui se usarmos concatenate
-
+        audio_slide_segments.append(current_segment_audio)
+        
     if not video_slide_clips: logging.error("Nenhum slide de vídeo foi gerado."); return None
 
-    # Concatena os clipes de vídeo e áudio separadamente
     final_visual_part = concatenate_videoclips(video_slide_clips, method="compose").set_fps(FPS_VIDEO)
-    final_narration_audio = concatenate_audioclips(audio_slide_segments_for_concat)
+    final_narration_audio = concatenate_audioclips(audio_slide_segments)
     
-    total_video_duration_actual = final_visual_part.duration # Duração do vídeo é determinada pelos visuais
+    total_video_duration_actual = final_visual_part.duration
 
-    # Ajusta a duração da narração para corresponder ao vídeo, se necessário
     if final_narration_audio.duration > total_video_duration_actual:
         final_narration_audio = final_narration_audio.subclip(0, total_video_duration_actual)
     elif final_narration_audio.duration < total_video_duration_actual:
-        # Adiciona silêncio ao final da narração se for mais curta que o vídeo
         silence_needed = total_video_duration_actual - final_narration_audio.duration
-        n_channels = getattr(final_narration_audio, 'nchannels', 2)
-        audio_fps_val = getattr(final_narration_audio, 'fps', 44100)
-        make_frame_silent = lambda t: np.zeros(n_channels)
-        padding = AudioClip(make_frame_silent, duration=silence_needed, fps=audio_fps_val)
-        final_narration_audio = concatenate_audioclips([final_narration_audio, padding])
+        if silence_needed > 0.01: # Adiciona silêncio apenas se for uma diferença significativa
+            n_channels = getattr(final_narration_audio, 'nchannels', 2)
+            audio_fps_val = getattr(final_narration_audio, 'fps', 44100)
+            make_frame_silent = lambda t: np.zeros(n_channels)
+            padding = AudioClip(make_frame_silent, duration=silence_needed, fps=audio_fps_val)
+            final_narration_audio = concatenate_audioclips([final_narration_audio, padding])
 
     final_video_with_narration = final_visual_part.set_audio(final_narration_audio)
     
@@ -367,13 +383,13 @@ def create_video_from_content(facts, narration_audio_files, channel_config, chan
                 final_product_video = final_product_video.set_audio(final_audio_track)
             else: 
                 final_product_video = final_product_video.set_audio(music_final)
-            logging.info(f"Música '{selected_music_path}' adicionada.")
+            logging.info(f"Música '{os.path.basename(selected_music_path)}' adicionada.")
         except Exception as e_music:
             logging.warning(f"Erro ao adicionar música '{selected_music_path}': {e_music}.")
     
-    output_dir = "generated_videos"; os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(GENERATED_VIDEOS_DIR, exist_ok=True)
     video_fname = f"{channel_title.replace(' ', '_').lower()}_{int(time.time())}.mp4"
-    video_output_path = os.path.join(output_dir, video_fname)
+    video_output_path = os.path.join(GENERATED_VIDEOS_DIR, video_fname)
     
     logging.info(f"Escrevendo vídeo final: {video_output_path} (Duração: {final_product_video.duration:.2f}s)")
     final_product_video.write_videofile(video_output_path, codec='libx264', audio_codec='aac', 
@@ -390,36 +406,25 @@ def create_video_from_content(facts, narration_audio_files, channel_config, chan
 def generate_video_title(facts, channel_name="default"):
     if not facts: return f"{channel_name.capitalize()} Video - {datetime.date.today().strftime('%Y-%m-%d')}"
     first_fact = facts[0]
-    # Tenta pegar as primeiras 5-7 palavras do primeiro fato para o título
-    words_for_title = first_fact.split()[:7]
+    words_for_title = first_fact.split()[:7] # Pega as primeiras ~7 palavras
     title_base = " ".join(words_for_title)
-    # Remove pontuação final comum para títulos
-    if title_base.endswith('.'): title_base = title_base[:-1]
-    if title_base.endswith(','): title_base = title_base[:-1]
+    if title_base.endswith(('.', ',', ';', ':')): title_base = title_base[:-1]
     
-    # Adiciona um prefixo ou sufixo se desejar, ou usa o fato diretamente
-    # Exemplo: "Você Sabia? " + title_base
-    # Exemplo: title_base + " | Curiosidades Rápidas"
-    # Para seu pedido (sem nome do canal, sem número aleatório):
     generated_title = f"Fato Incrível: {title_base.strip()}"
-    
-    max_title_length = 95 # Limite do YouTube é 100, mas é bom ter uma margem
+    if len(first_fact.split()) > 7: generated_title += "..."
+        
+    max_title_length = 95 
     if len(generated_title) > max_title_length:
-        # Tenta cortar de forma mais inteligente, mantendo palavras inteiras
         cut_title = generated_title[:max_title_length-3]
         last_space = cut_title.rfind(' ')
-        if last_space != -1:
-            generated_title = cut_title[:last_space] + "..."
-        else:
-            generated_title = cut_title + "..."
+        generated_title = cut_title[:last_space] + "..." if last_space != -1 else cut_title + "..."
             
     logging.info(f"Título gerado: '{generated_title}'")
     return generated_title
 
-
 def upload_video(youtube_service, video_path, title, description, tags, category_id, privacy_status="public"):
     logging.info(f"--- Upload: '{title}', Status: '{privacy_status}' ---")
-    response_final_upload = None # CORREÇÃO: Inicializa a variável que vai guardar a resposta final
+    response_final_upload = None # CORRIGIDO: Inicializa a variável
     try:
         if not video_path or not os.path.exists(video_path):
             logging.error(f"ERRO Upload: Arquivo de vídeo NÃO encontrado em {video_path}")
@@ -433,25 +438,24 @@ def upload_video(youtube_service, video_path, title, description, tags, category
         
         done = False
         while not done:
-            status, chunk_response = request.next_chunk() # 'chunk_response' é a resposta do pedaço atual ou a resposta final
+            status, chunk_response = request.next_chunk()
             if status: 
                 logging.info(f"Upload: {int(status.progress() * 100)}%")
-            if chunk_response is not None: # Significa que o upload do chunk (ou o upload completo) foi concluído
+            if chunk_response is not None: 
                 done = True
-                response_final_upload = chunk_response # Guarda a resposta final
+                response_final_upload = chunk_response 
         
         if response_final_upload: 
             video_id = response_final_upload.get('id')
             if video_id:
                 logging.info(f"Upload completo! Vídeo ID: {video_id}")
-                logging.info(f"Link (pode levar alguns minutos para ficar ativo): https://googleusercontent.com/youtube.com/1/watch?v={video_id}") # Link mais direto
+                logging.info(f"Link: https://www.youtube.com/watch?v={video_id}") 
                 return video_id
             else:
                 logging.error(f"Upload pode ter falhado ou API não retornou ID. Resposta: {response_final_upload}")
                 return None
         else: 
-            # Este caso não deveria acontecer com resumable=True se o loop terminou
-            logging.error("Upload não retornou uma resposta final válida após o loop (variável 'response_final_upload' permaneceu None).")
+            logging.error("Upload não retornou uma resposta final válida após o loop.")
             return None
     except Exception as e:
         logging.error(f"ERRO CRÍTICO durante upload para o YouTube: {e}", exc_info=True)
@@ -463,16 +467,24 @@ def main(channel_name_arg):
     if not config:
         logging.error(f"Configuração para o canal '{channel_name_arg}' não encontrada em CHANNEL_CONFIGS."); sys.exit(1)
 
-    # Seleção de música
+    # Criação dos diretórios globais, se não existirem
+    os.makedirs(GENERATED_VIDEOS_DIR, exist_ok=True)
+    os.makedirs(GENERATED_IMAGES_DIR, exist_ok=True)
+    os.makedirs(GENERATED_AUDIO_DIR, exist_ok=True)
+    os.makedirs(ASSETS_DIR, exist_ok=True)
+    os.makedirs(os.path.join(ASSETS_DIR, "fonts"), exist_ok=True)
+    os.makedirs(os.path.join(ASSETS_DIR, "music"), exist_ok=True)
+
     selected_music_path = None
     music_choices = config.get("music_options", [])
     if music_choices: 
-        selected_music_path = random.choice(music_choices)
-        if not os.path.isabs(selected_music_path): # Constrói caminho absoluto se for relativo
-            selected_music_path = os.path.join(ASSETS_DIR, "music", os.path.basename(selected_music_path))
-        if not os.path.exists(selected_music_path):
-             logging.warning(f"Música configurada '{selected_music_path}' não encontrada. Prosseguindo sem música.")
-             selected_music_path = None
+        music_file_name = random.choice(music_choices)
+        potential_music_path = os.path.join(ASSETS_DIR, "music", music_file_name)
+        if os.path.exists(potential_music_path):
+            selected_music_path = potential_music_path
+            logging.info(f"Música selecionada: {selected_music_path}")
+        else:
+            logging.warning(f"Arquivo de música '{music_file_name}' não encontrado em '{os.path.join(ASSETS_DIR, 'music')}'. Prosseguindo sem música de fundo.")
     config["selected_music_path"] = selected_music_path 
 
     client_secrets_path = CLIENT_SECRET_FILE
@@ -485,24 +497,23 @@ def main(channel_name_arg):
     if not facts_list: logging.error("Nenhum fato obtido. Encerrando."); sys.exit(1)
 
     narration_audio_files = []
-    temp_audio_dir = "temp_audio"; os.makedirs(temp_audio_dir, exist_ok=True)
     actual_facts_with_audio = [] 
 
     for i, fact in enumerate(facts_list):
         audio_fname = f"{channel_name_arg}_fact_{i+1}_{int(time.time()*1000)}_{random.randint(0,1000)}.mp3"
-        audio_file_path = os.path.join(temp_audio_dir, audio_fname) # Caminho completo
-        path = generate_audio_from_text(fact, config["gtts_language"], audio_file_path) # Passa caminho completo
+        audio_file_path = os.path.join(GENERATED_AUDIO_DIR, audio_fname)
+        path = generate_audio_from_text(fact, config["gtts_language"], audio_file_path)
         if path: 
             narration_audio_files.append(path)
             actual_facts_with_audio.append(fact)
         else: 
-            logging.warning(f"Falha ao gerar áudio para o fato: '{fact[:30]}...'. Este fato será pulado.")
+            logging.warning(f"Falha ao gerar áudio para o fato: '{fact[:30]}...'.")
     
-    if not narration_audio_files:
-        logging.error("Nenhum arquivo de narração foi gerado com sucesso. Abortando."); sys.exit(1)
-    if len(narration_audio_files) != len(actual_facts_with_audio): # Checagem de segurança
-        logging.error(f"Inconsistência: {len(actual_facts_with_audio)} fatos vs {len(narration_audio_files)} áudios. Abortando.")
-        sys.exit(1)
+    if not narration_audio_files or len(narration_audio_files) != len(actual_facts_with_audio) or not actual_facts_with_audio :
+         logging.error(f"Geração de áudio inconsistente ou falhou. Fatos válidos: {len(actual_facts_with_audio)}, Áudios: {len(narration_audio_files)}. Abortando.")
+         for audio_f in narration_audio_files: 
+             if os.path.exists(audio_f): os.remove(audio_f)
+         sys.exit(1)
 
     video_output_path = create_video_from_content(
         facts=actual_facts_with_audio, 
@@ -511,13 +522,12 @@ def main(channel_name_arg):
         channel_title=channel_name_arg
     )
     
-    # Limpeza dos áudios de narração individuais
     for audio_f in narration_audio_files: 
         if os.path.exists(audio_f):
-            try: os.remove(audio_f); logging.info(f"Áudio temporário removido: {audio_f}")
+            try: os.remove(audio_f)
             except Exception as e: logging.warning(f"Falha ao remover áudio temp {audio_f}: {e}")
 
-    if not video_output_path: logging.error("Falha ao criar o arquivo de vídeo. Encerrando."); sys.exit(1)
+    if not video_output_path: logging.error("Falha criar vídeo."); sys.exit(1)
 
     video_title = generate_video_title(actual_facts_with_audio, channel_name=channel_name_arg)
     video_description = generate_video_description(actual_facts_with_audio, channel_name=channel_name_arg)
@@ -535,18 +545,18 @@ def main(channel_name_arg):
     logging.info(f"--- Fim do processo para o canal '{channel_name_arg}' ---")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="YouTube Automation Script")
-    parser.add_argument("--channel", required=True, help="Nome do canal (chave em CHANNEL_CONFIGS).")
+    parser = argparse.ArgumentParser(description="Automatiza a criação e upload de vídeos de curiosidades para o YouTube.")
+    parser.add_argument("--channel", required=True, help="Nome do canal (deve ser uma chave em CHANNEL_CONFIGS).")
     args = None
     try:
         args = parser.parse_args()
         main(args.channel)
     except SystemExit as e:
-        if e.code is None or e.code == 0: # Saída normal
+        if e.code is None or e.code == 0: 
              logging.info(f"Script para '{args.channel if args else 'N/A'}' concluído (código de saída {e.code}).")
-        else: # Erro que causou sys.exit(codigo_diferente_de_zero)
+        else: 
              logging.error(f"Script para '{args.channel if args else 'N/A'}' encerrado com erro (código {e.code}).")
-             raise # Relança a exceção para a Action registrar como falha
+             raise 
     except Exception as e_main_block:
         logging.error(f"ERRO INESPERADO NO BLOCO PRINCIPAL para '{args.channel if args else 'N/A'}': {e_main_block}", exc_info=True)
-        sys.exit(2) # Código de saída específico para erro inesperado
+        sys.exit(2)

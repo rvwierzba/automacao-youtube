@@ -22,13 +22,8 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.http import MediaFileUpload
 
-# Tenta importar a biblioteca do Vertex AI (para Imagen)
 try:
     from google.cloud import aiplatform
-    # from google.cloud.aiplatform_v1beta1.types import PredictRequest # Descomente se necessário para chamadas mais complexas
-    # from google.cloud.aiplatform_v1beta1.services.prediction_service import PredictionServiceClient # Descomente se necessário
-    # from google.protobuf import json_format # Descomente se necessário
-    # from google.protobuf.struct_pb2 import Value # Descomente se necessário
     VERTEX_AI_SDK_AVAILABLE = True
     logging.info("Biblioteca google-cloud-aiplatform encontrada e importada.")
 except ImportError:
@@ -36,24 +31,21 @@ except ImportError:
     logging.warning("Biblioteca google-cloud-aiplatform não encontrada. Geração de imagem com Vertex AI Imagen estará desabilitada.")
     logging.warning("Para habilitar, adicione 'google-cloud-aiplatform' ao requirements.txt e instale.")
 
-
 logging.basicConfig(level=logging.INFO, stream=sys.stdout, format='%(asctime)s - %(levelname)s - %(message)s')
 SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
 
 # --- Constantes e Configurações ---
-# Ajusta CURRENT_DIR para o diretório onde o script está (scripts)
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-# Ajusta os caminhos para serem relativos ao diretório PAI do diretório 'scripts'
-BASE_DIR = os.path.dirname(CURRENT_DIR) # Este é o diretório raiz do projeto
+BASE_DIR = os.path.dirname(CURRENT_DIR) 
 
 CREDENTIALS_DIR = os.path.join(BASE_DIR, 'credentials')
 CLIENT_SECRET_FILE = os.path.join(CREDENTIALS_DIR, 'client_secret.json')
 TOKEN_FILE = os.path.join(CREDENTIALS_DIR, 'token.json')
 
 GENERATED_VIDEOS_DIR = os.path.join(BASE_DIR, 'generated_videos')
-GENERATED_IMAGES_DIR = os.path.join(BASE_DIR, 'generated_images') # Para imagens temporárias
-GENERATED_AUDIO_DIR = os.path.join(BASE_DIR, 'temp_audio') # Renomeado para clareza e consistência
-ASSETS_DIR = os.path.join(BASE_DIR, 'assets')
+GENERATED_IMAGES_DIR = os.path.join(BASE_DIR, 'generated_images') 
+GENERATED_AUDIO_DIR = os.path.join(BASE_DIR, 'temp_audio') 
+ASSETS_DIR = os.path.join(BASE_DIR, 'assets') # Definido globalmente
 
 FPS_VIDEO = 24
 IMAGE_DURATION_SECONDS = 5
@@ -62,29 +54,30 @@ MAX_CHARS_PER_LINE_IMAGE = 40
 
 CHANNEL_CONFIGS = {
     "fizzquirk": {
-        "video_title_template": "FizzQuirk Fact Shorts! #{short_id}", # Será sobrescrito pela função generate_video_title
+        "video_title_template": "FizzQuirk Fact Shorts! #{short_id}",
         "video_description_template": "Astounding fact of the day by FizzQuirk!\n\nFact:\n{fact_text_for_description}\n\n#FizzQuirk #Shorts #AmazingFacts #Trivia #FunFacts",
         "video_tags_list": ["fizzquirk", "facts", "trivia", "shorts", "fun facts", "learning", "amazing facts"],
         "music_options": [
-            "animado.mp3", # Apenas o nome do arquivo, o caminho será construído
+            "animado.mp3", 
             "fundo_misterioso.mp3",
             "tema_calmo.mp3"
         ],
         "default_music_if_list_empty": None,
         "music_volume": 0.07,
         "gtts_language": "en",
-        "text_font_path_for_image_placeholder": None, # Usará a fonte padrão do Pillow
+        "text_font_path_for_image_placeholder": None, 
         "num_facts_to_use": 3,
         "duration_per_fact_slide_min": 6,
         "pause_after_fact": 1.0,
         "category_id": "27",
         "gcp_project_id": os.environ.get("GCP_PROJECT_ID"),
         "gcp_location": os.environ.get("GCP_LOCATION", "us-central1"),
-        "imagen_model_name": "imagegeneration@006" 
+        "imagen_model_name": "imagegeneration@006"
     },
 }
 
 def get_authenticated_service(client_secrets_path, token_path):
+    # ... (código da função mantido) ...
     logging.info(f"DEBUG_PRINT: [FUNC_AUTH] Tentando autenticar com token: {token_path} e client_secrets: {client_secrets_path}")
     creds = None
     if os.path.exists(token_path):
@@ -137,6 +130,7 @@ def get_authenticated_service(client_secrets_path, token_path):
     return build('youtube', 'v3', credentials=creds)
 
 def get_facts_for_video(keywords, language, num_facts=1):
+    # ... (função mantida) ...
     logging.info(f"Obtendo {num_facts} fatos para idioma '{language}' com keywords: {keywords}")
     facts_db = {
         "en": [
@@ -165,11 +159,12 @@ def get_facts_for_video(keywords, language, num_facts=1):
         return available_facts
     return random.sample(available_facts, num_facts)
 
-def generate_audio_from_text(text, lang, audio_file_path): # Recebe o caminho completo
+def generate_audio_from_text(text, lang, audio_file_path):
+    # ... (função mantida) ...
     logging.info(f"Gerando áudio para: '{text[:50]}...' (Idioma: {lang})")
     try:
         tts = gTTS(text=text, lang=lang, slow=False)
-        os.makedirs(os.path.dirname(audio_file_path), exist_ok=True) # Garante que o diretório existe
+        os.makedirs(os.path.dirname(audio_file_path), exist_ok=True)
         tts.save(audio_file_path)
         if os.path.exists(audio_file_path) and os.path.getsize(audio_file_path) > 0:
             logging.info(f"Áudio salvo em: {audio_file_path}")
@@ -180,6 +175,7 @@ def generate_audio_from_text(text, lang, audio_file_path): # Recebe o caminho co
     return None
 
 def generate_dynamic_image_placeholder(fact_text, width, height, font_path_config, duration, fps_value):
+    # ... (função mantida) ...
     logging.info(f"Gerando imagem PLACEHOLDER para: '{fact_text[:30]}...'")
     temp_img_path = None
     try:
@@ -212,7 +208,7 @@ def generate_dynamic_image_placeholder(fact_text, width, height, font_path_confi
             try: 
                 bbox_test = draw.textbbox((0,0), current_line + word + " ", font=font_to_use)
                 text_w = bbox_test[2] - bbox_test[0]
-            except AttributeError: text_w = draw.textlength(current_line + word + " ", font=font_to_use)
+            except AttributeError: text_w = draw.textlength(current_line + word + " ", font=font_to_use) 
 
             if text_w <= max_text_width: current_line += word + " "
             else: lines.append(current_line.strip()); current_line = word + " "
@@ -242,7 +238,7 @@ def generate_dynamic_image_placeholder(fact_text, width, height, font_path_confi
             draw.text((x_text, current_y), line, font=font_to_use, fill=text_color, align="center")
             current_y += line_heights[i] + spacing
 
-        temp_img_dir = GENERATED_IMAGES_DIR; os.makedirs(temp_img_dir, exist_ok=True) # Usa pasta global
+        temp_img_dir = GENERATED_IMAGES_DIR; os.makedirs(temp_img_dir, exist_ok=True)
         temp_img_path = os.path.join(temp_img_dir, f"placeholder_{random.randint(1000,9999)}_{int(time.time()*1000)}.png")
         img.save(temp_img_path)
         image_clip = ImageClip(temp_img_path).set_duration(duration).set_fps(fps_value) 
@@ -252,6 +248,7 @@ def generate_dynamic_image_placeholder(fact_text, width, height, font_path_confi
         return ColorClip(size=(width, height), color=(random.randint(50,100),random.randint(50,100),random.randint(50,100)), duration=duration).set_fps(fps_value), None
 
 def generate_image_with_vertex_ai_imagen(fact_text, duration, config, font_path_for_fallback, fps_value):
+    # ... (função mantida, com placeholder para Vertex AI Imagen) ...
     logging.info(f"Tentando gerar imagem com Vertex AI para: '{fact_text[:30]}...'")
     project_id = config.get("gcp_project_id")
     location = config.get("gcp_location")
@@ -280,7 +277,7 @@ def generate_image_with_vertex_ai_imagen(fact_text, duration, config, font_path_
         
         if response.images:
             image_obj = response.images[0]
-            temp_img_dir = GENERATED_IMAGES_DIR; os.makedirs(temp_img_dir, exist_ok=True) # Usa pasta global
+            temp_img_dir = GENERATED_IMAGES_DIR; os.makedirs(temp_img_dir, exist_ok=True)
             gen_img_path = os.path.join(temp_img_dir, f"vertex_img_{int(time.time()*1000)}.png")
             
             if hasattr(image_obj, '_image_bytes') and image_obj._image_bytes:
@@ -309,7 +306,7 @@ def create_video_from_content(facts, narration_audio_files, channel_config, chan
     font_for_placeholder = channel_config.get("text_font_path_for_image_placeholder")
 
     video_slide_clips = []
-    audio_slide_segments = [] # CORRIGIDO: Lista inicializada
+    audio_slide_segments = [] # CORRIGIDO: Lista inicializada aqui
     temp_image_paths_to_clean = []
     
     for i, fact_text in enumerate(facts):
@@ -322,7 +319,7 @@ def create_video_from_content(facts, narration_audio_files, channel_config, chan
         
         image_clip_result, temp_img_path = generate_image_with_vertex_ai_imagen(
             fact_text, slide_duration, channel_config,
-            font_for_placeholder, FPS_VIDEO
+            font_for_placeholder, FPS_VIDEO 
         )
         if temp_img_path: temp_image_paths_to_clean.append(temp_img_path)
         if image_clip_result is None: 
@@ -343,7 +340,7 @@ def create_video_from_content(facts, narration_audio_files, channel_config, chan
         else:
             current_segment_audio = narration_part_for_slide
         
-        audio_slide_segments.append(current_segment_audio)
+        audio_slide_segments.append(current_segment_audio) # Agora é `append` simples para concatenar depois
         
     if not video_slide_clips: logging.error("Nenhum slide de vídeo foi gerado."); return None
 
@@ -356,7 +353,7 @@ def create_video_from_content(facts, narration_audio_files, channel_config, chan
         final_narration_audio = final_narration_audio.subclip(0, total_video_duration_actual)
     elif final_narration_audio.duration < total_video_duration_actual:
         silence_needed = total_video_duration_actual - final_narration_audio.duration
-        if silence_needed > 0.01: # Adiciona silêncio apenas se for uma diferença significativa
+        if silence_needed > 0.01: 
             n_channels = getattr(final_narration_audio, 'nchannels', 2)
             audio_fps_val = getattr(final_narration_audio, 'fps', 44100)
             make_frame_silent = lambda t: np.zeros(n_channels)
@@ -406,7 +403,7 @@ def create_video_from_content(facts, narration_audio_files, channel_config, chan
 def generate_video_title(facts, channel_name="default"):
     if not facts: return f"{channel_name.capitalize()} Video - {datetime.date.today().strftime('%Y-%m-%d')}"
     first_fact = facts[0]
-    words_for_title = first_fact.split()[:7] # Pega as primeiras ~7 palavras
+    words_for_title = first_fact.split()[:7] 
     title_base = " ".join(words_for_title)
     if title_base.endswith(('.', ',', ';', ':')): title_base = title_base[:-1]
     
@@ -424,7 +421,7 @@ def generate_video_title(facts, channel_name="default"):
 
 def upload_video(youtube_service, video_path, title, description, tags, category_id, privacy_status="public"):
     logging.info(f"--- Upload: '{title}', Status: '{privacy_status}' ---")
-    response_final_upload = None # CORRIGIDO: Inicializa a variável
+    response_final_upload = None # CORRIGIDO: Inicializa response_final_upload
     try:
         if not video_path or not os.path.exists(video_path):
             logging.error(f"ERRO Upload: Arquivo de vídeo NÃO encontrado em {video_path}")
@@ -438,7 +435,7 @@ def upload_video(youtube_service, video_path, title, description, tags, category
         
         done = False
         while not done:
-            status, chunk_response = request.next_chunk()
+            status, chunk_response = request.next_chunk() 
             if status: 
                 logging.info(f"Upload: {int(status.progress() * 100)}%")
             if chunk_response is not None: 
@@ -449,7 +446,7 @@ def upload_video(youtube_service, video_path, title, description, tags, category
             video_id = response_final_upload.get('id')
             if video_id:
                 logging.info(f"Upload completo! Vídeo ID: {video_id}")
-                logging.info(f"Link: https://www.youtube.com/watch?v={video_id}") 
+                logging.info(f"Link (pode levar alguns minutos para ficar ativo): https://www.youtube.com/watch?v={video_id}") # Link correto
                 return video_id
             else:
                 logging.error(f"Upload pode ter falhado ou API não retornou ID. Resposta: {response_final_upload}")
@@ -467,7 +464,6 @@ def main(channel_name_arg):
     if not config:
         logging.error(f"Configuração para o canal '{channel_name_arg}' não encontrada em CHANNEL_CONFIGS."); sys.exit(1)
 
-    # Criação dos diretórios globais, se não existirem
     os.makedirs(GENERATED_VIDEOS_DIR, exist_ok=True)
     os.makedirs(GENERATED_IMAGES_DIR, exist_ok=True)
     os.makedirs(GENERATED_AUDIO_DIR, exist_ok=True)
@@ -485,16 +481,17 @@ def main(channel_name_arg):
             logging.info(f"Música selecionada: {selected_music_path}")
         else:
             logging.warning(f"Arquivo de música '{music_file_name}' não encontrado em '{os.path.join(ASSETS_DIR, 'music')}'. Prosseguindo sem música de fundo.")
+            selected_music_path = None 
     config["selected_music_path"] = selected_music_path 
 
     client_secrets_path = CLIENT_SECRET_FILE
     token_path = TOKEN_FILE
     
     youtube_service = get_authenticated_service(client_secrets_path, token_path)
-    if not youtube_service: logging.error("Falha na autenticação do YouTube. Encerrando."); sys.exit(1)
+    if not youtube_service: logging.error("Falha YouTube auth."); sys.exit(1)
 
     facts_list = get_facts_for_video(config.get("fact_keywords", []), config["gtts_language"], config["num_facts_to_use"])
-    if not facts_list: logging.error("Nenhum fato obtido. Encerrando."); sys.exit(1)
+    if not facts_list: logging.error("Sem fatos."); sys.exit(1)
 
     narration_audio_files = []
     actual_facts_with_audio = [] 
@@ -507,7 +504,7 @@ def main(channel_name_arg):
             narration_audio_files.append(path)
             actual_facts_with_audio.append(fact)
         else: 
-            logging.warning(f"Falha ao gerar áudio para o fato: '{fact[:30]}...'.")
+            logging.warning(f"Falha áudio para fato: '{fact[:30]}...'.")
     
     if not narration_audio_files or len(narration_audio_files) != len(actual_facts_with_audio) or not actual_facts_with_audio :
          logging.error(f"Geração de áudio inconsistente ou falhou. Fatos válidos: {len(actual_facts_with_audio)}, Áudios: {len(narration_audio_files)}. Abortando.")
@@ -524,13 +521,13 @@ def main(channel_name_arg):
     
     for audio_f in narration_audio_files: 
         if os.path.exists(audio_f):
-            try: os.remove(audio_f)
+            try: os.remove(audio_f); logging.info(f"Áudio temp removido: {audio_f}")
             except Exception as e: logging.warning(f"Falha ao remover áudio temp {audio_f}: {e}")
 
     if not video_output_path: logging.error("Falha criar vídeo."); sys.exit(1)
 
     video_title = generate_video_title(actual_facts_with_audio, channel_name=channel_name_arg)
-    video_description = generate_video_description(actual_facts_with_audio, channel_name=channel_name_arg)
+    video_description = generate_video_description(actual_facts_with_audio, channel_name=channel_name_arg) # Corrigido para usar a função correta
     
     video_id_uploaded = upload_video(youtube_service, video_output_path, video_title,
                                      video_description, config["youtube_tags"],
@@ -546,7 +543,7 @@ def main(channel_name_arg):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Automatiza a criação e upload de vídeos de curiosidades para o YouTube.")
-    parser.add_argument("--channel", required=True, help="Nome do canal (deve ser uma chave em CHANNEL_CONFIGS).")
+    parser.add_argument("--channel", required=True, help="Nome do canal (chave em CHANNEL_CONFIGS).")
     args = None
     try:
         args = parser.parse_args()

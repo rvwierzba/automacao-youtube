@@ -62,9 +62,8 @@ MAX_CHARS_PER_LINE_IMAGE = 40
 
 CHANNEL_CONFIGS = {
     "fizzquirk": {
-        # "video_title_template": "FizzQuirk Fact Shorts! #{short_id}", # Título agora é dinâmico
         "video_description_template": "Astounding fact of the day from FizzQuirk!\n\nToday's Fact:\n{fact_text_for_description}\n\n#FizzQuirk #FunFacts #Shorts #AmazingFacts #Trivia #DidYouKnow",
-        "video_tags_list": ["fizzquirk", "facts", "trivia", "shorts", "fun facts", "learning", "amazing facts", "did you know"], # CHAVE CORRETA
+        "video_tags_list": ["fizzquirk", "facts", "trivia", "shorts", "fun facts", "learning", "amazing facts", "did you know"],
         "music_options": [
             "animado.mp3", 
             "fundo_misterioso.mp3",
@@ -77,8 +76,8 @@ CHANNEL_CONFIGS = {
         "num_facts_to_use": 3,
         "duration_per_fact_slide_min": 6,
         "pause_after_fact": 1.0,
-        "category_id": "27", # CHAVE CORRETA
-        "youtube_privacy_status": "public", # Adicionado para consistência
+        "category_id": "27", # CHAVE CORRETA A SER USADA
+        "youtube_privacy_status": "public", # CHAVE CORRETA A SER USADA
         "gcp_project_id": os.environ.get("GCP_PROJECT_ID"),
         "gcp_location": os.environ.get("GCP_LOCATION", "us-central1"),
         "imagen_model_name": "imagegeneration@006" 
@@ -108,7 +107,7 @@ def get_authenticated_service(client_secrets_path, token_path):
         
         if not creds or not creds.valid: 
             if not os.path.exists(client_secrets_path):
-                logging.error(f"ERRO CRÍTICO: client_secrets.json não encontrado em {client_secrets_path}")
+                logging.error(f"ERRO CRÍTICO: client_secret.json não encontrado em {client_secrets_path}")
                 return None
             logging.info("Executando novo fluxo de autorização (pode ser interativo para ambiente local)...")
             try:
@@ -196,24 +195,36 @@ def generate_dynamic_image_placeholder(fact_text, width, height, font_path_confi
         padding = int(width * 0.08); max_text_width = width - 2 * padding
         font_to_use = None; current_font_size = int(height / 17) 
         try:
+            # Tenta carregar a fonte customizada se especificada
             if font_path_config and os.path.exists(font_path_config):
                 font_to_use = PILImageFont.truetype(font_path_config, current_font_size)
                 logging.info(f"Usando fonte customizada para placeholder: {font_path_config} com tamanho {current_font_size}")
-            else:
-                if font_path_config: logging.warning(f"Fonte '{font_path_config}' não encontrada. Usando padrão Pillow.")
-                else: logging.info("Nenhum caminho de fonte especificado. Usando padrão Pillow.")
-                font_to_use = PILImageFont.load_default(size=current_font_size) 
+            else: # Fallback para Arial se nenhuma fonte customizada ou se não encontrada
+                if font_path_config: logging.warning(f"Fonte '{font_path_config}' não encontrada.")
+                try:
+                    # Tenta carregar Arial (comum em muitos sistemas)
+                    arial_path = os.path.join(ASSETS_DIR, "fonts", "arial.ttf") # Assumindo que você pode adicionar arial.ttf
+                    if os.path.exists(arial_path):
+                        font_to_use = PILImageFont.truetype(arial_path, current_font_size)
+                        logging.info(f"Usando fonte Arial de '{arial_path}' para placeholder.")
+                    else: # Se nem Arial estiver lá, usa a default do Pillow
+                        logging.warning(f"Arial não encontrada em '{arial_path}'. Usando fonte padrão Pillow.")
+                        font_to_use = PILImageFont.load_default(size=current_font_size)
+                except IOError: # Captura erro se a fonte Arial também não for carregável
+                    logging.warning(f"Erro ao carregar Arial. Usando fonte padrão Pillow.")
+                    font_to_use = PILImageFont.load_default(size=current_font_size)
         except Exception as e_font: 
-            logging.warning(f"Erro ao carregar fonte '{font_path_config}': {e_font}. Usando padrão Pillow.")
+            logging.warning(f"Erro geral ao carregar fonte '{font_path_config}': {e_font}. Usando padrão Pillow.")
             current_font_size = max(15, int(height / 22)) 
             font_to_use = PILImageFont.load_default(size=current_font_size)
+
 
         lines = []; words = fact_text.split(); current_line = ""
         for word in words:
             try: 
                 bbox_test = draw.textbbox((0,0), current_line + word + " ", font=font_to_use)
                 text_w = bbox_test[2] - bbox_test[0]
-            except AttributeError: text_w = draw.textlength(current_line + word + " ", font=font_to_use)
+            except AttributeError: text_w = draw.textlength(current_line + word + " ", font=font_to_use) 
 
             if text_w <= max_text_width: current_line += word + " "
             else: lines.append(current_line.strip()); current_line = word + " "
@@ -308,9 +319,12 @@ def create_video_from_content(facts, narration_audio_files, channel_config, chan
     default_slide_duration = channel_config.get("duration_per_fact_slide_min", 6)
     pause_after_fact = channel_config.get("pause_after_fact", 1.0)
     font_for_placeholder = channel_config.get("text_font_path_for_image_placeholder")
+    if font_for_placeholder and not os.path.isabs(font_for_placeholder): # Constrói caminho absoluto se relativo
+        font_for_placeholder = os.path.join(ASSETS_DIR, "fonts", os.path.basename(font_for_placeholder))
+
 
     video_slide_clips = []
-    audio_slide_segments = [] # CORRIGIDO: Lista inicializada
+    audio_slide_segments = [] 
     temp_image_paths_to_clean = []
     
     for i, fact_text in enumerate(facts):
@@ -330,7 +344,7 @@ def create_video_from_content(facts, narration_audio_files, channel_config, chan
             logging.error(f"Imagem nula para '{fact_text[:30]}...'. Pulando."); continue
 
         image_clip_result = image_clip_result.set_duration(slide_duration).set_fps(FPS_VIDEO)
-        video_slide_clips.append(image_clip_result)
+        video_slide_clips.append(image_clip_result) 
 
         narration_part_for_slide = narration_clip_instance.subclip(0, min(narration_clip_instance.duration, slide_duration))
         current_segment_audio = None
@@ -406,7 +420,6 @@ def create_video_from_content(facts, narration_audio_files, channel_config, chan
 
 def generate_video_title(facts, channel_name="default"):
     if not facts:
-        # Fallback se não houver fatos
         timestamp = datetime.date.today().strftime('%Y-%m-%d')
         return f"{channel_name.capitalize()} Curiosidades - {timestamp}"
 
@@ -430,15 +443,11 @@ def generate_video_title(facts, channel_name="default"):
     logging.info(f"Título gerado: '{generated_title}'")
     return generated_title
 
-def generate_video_description(facts, config, channel_name_arg): # Função definida
+def generate_video_description(facts, config, channel_name_arg): # Função DEFINIDA
     """Gera uma descrição para o vídeo."""
     template = config.get("video_description_template", "Interesting facts! #shorts\n\nFact:\n{fact_text_for_description}")
-    
     first_fact_text = facts[0] if facts else "Fatos incríveis e curiosidades!"
-    
-    # Apenas o placeholder {fact_text_for_description} está no template do fizzquirk
     description = template.format(fact_text_for_description=first_fact_text)
-    
     logging.info(f"Descrição gerada: '{description[:150]}...'")
     return description
 
@@ -469,7 +478,7 @@ def upload_video(youtube_service, video_path, title, description, tags, category
             video_id = response_final_upload.get('id')
             if video_id:
                 logging.info(f"Upload completo! Vídeo ID: {video_id}")
-                logging.info(f"Link (pode levar alguns minutos para ficar ativo): https://www.youtube.com/watch?v={video_id}") 
+                logging.info(f"Link (pode levar alguns minutos para ficar ativo): https://www.youtube.com/watch?v={video_id}") # Mantido link original
                 return video_id
             else:
                 logging.error(f"Upload pode ter falhado ou API não retornou ID. Resposta: {response_final_upload}")
@@ -491,14 +500,14 @@ def main(channel_name_arg):
     os.makedirs(GENERATED_IMAGES_DIR, exist_ok=True)
     os.makedirs(GENERATED_AUDIO_DIR, exist_ok=True)
     os.makedirs(ASSETS_DIR, exist_ok=True)
-    os.makedirs(os.path.join(ASSETS_DIR, "fonts"), exist_ok=True) # Garante que assets/fonts exista
-    os.makedirs(os.path.join(ASSETS_DIR, "music"), exist_ok=True) # Garante que assets/music exista
+    os.makedirs(os.path.join(ASSETS_DIR, "fonts"), exist_ok=True)
+    os.makedirs(os.path.join(ASSETS_DIR, "music"), exist_ok=True)
 
     selected_music_path = None
     music_choices = config.get("music_options", [])
     if music_choices: 
         music_file_name = random.choice(music_choices)
-        potential_music_path = os.path.join(ASSETS_DIR, "music", music_file_name) # Caminho completo
+        potential_music_path = os.path.join(ASSETS_DIR, "music", music_file_name) 
         if os.path.exists(potential_music_path):
             selected_music_path = potential_music_path
             logging.info(f"Música selecionada: {selected_music_path}")
@@ -530,7 +539,7 @@ def main(channel_name_arg):
             logging.warning(f"Falha áudio para fato: '{fact[:30]}...'.")
     
     if not narration_audio_files or len(narration_audio_files) != len(actual_facts_with_audio) or not actual_facts_with_audio :
-         logging.error(f"Geração de áudio inconsistente ou falhou. Fatos válidos: {len(actual_facts_with_audio)}, Áudios: {len(narration_audio_files)}. Abortando.")
+         logging.error(f"Geração de áudio inconsistente. Fatos válidos: {len(actual_facts_with_audio)}, Áudios: {len(narration_audio_files)}. Abortando.")
          for audio_f in narration_audio_files: 
              if os.path.exists(audio_f): os.remove(audio_f)
          sys.exit(1)
@@ -550,13 +559,14 @@ def main(channel_name_arg):
     if not video_output_path: logging.error("Falha criar vídeo."); sys.exit(1)
 
     video_title = generate_video_title(actual_facts_with_audio, channel_name=channel_name_arg)
-    video_description = generate_video_description(actual_facts_with_audio, config, channel_name_arg) 
+    video_description = generate_video_description(actual_facts_with_audio, config, channel_name_arg) # Chamada corrigida
     
+    # CORRIGIDO: Usando as chaves corretas da config
     video_id_uploaded = upload_video(youtube_service, video_output_path, video_title,
                                      video_description, 
-                                     config.get("video_tags_list"),       # CORRIGIDO
-                                     config.get("category_id"),          # CORRIGIDO
-                                     config.get("youtube_privacy_status", "public")) # CORRIGIDO
+                                     config.get("video_tags_list"),       
+                                     config.get("category_id"),          
+                                     config.get("youtube_privacy_status", "public"))
     if video_id_uploaded:
         logging.info(f"--- SUCESSO! Canal '{channel_name_arg}'. VÍDEO PÚBLICO ID: {video_id_uploaded} ---")
         if os.path.exists(video_output_path): 

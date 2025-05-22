@@ -8,27 +8,21 @@ import random
 import numpy as np
 import datetime 
 
-# Para geração de áudio
 from gtts import gTTS
-
-# Para edição de vídeo
 from moviepy.editor import (AudioFileClip, TextClip, CompositeVideoClip,
                             ColorClip, ImageClip, CompositeAudioClip,
                             concatenate_videoclips, concatenate_audioclips, AudioClip)
 from moviepy.config import change_settings
 import moviepy.config as MOPY_CONFIG
 
-# Para o placeholder de imagem e manipulação
 from PIL import Image as PILImage, ImageDraw as PILImageDraw, ImageFont as PILImageFont
 
-# Para API do YouTube
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.http import MediaFileUpload
 
-# Tenta importar a biblioteca do Vertex AI (para Imagen)
 try:
     from google.cloud import aiplatform
     VERTEX_AI_SDK_AVAILABLE = True
@@ -42,7 +36,6 @@ except ImportError:
 logging.basicConfig(level=logging.INFO, stream=sys.stdout, format='%(asctime)s - %(levelname)s - %(message)s')
 SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
 
-# --- Constantes e Configurações ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(CURRENT_DIR) 
 
@@ -85,6 +78,7 @@ CHANNEL_CONFIGS = {
 }
 
 def get_authenticated_service(client_secrets_path, token_path):
+    # ... (código da função mantido igual à versão anterior) ...
     logging.info(f"DEBUG_PRINT: [FUNC_AUTH] Tentando autenticar com token: {token_path} e client_secrets: {client_secrets_path}")
     creds = None
     if os.path.exists(token_path):
@@ -107,7 +101,7 @@ def get_authenticated_service(client_secrets_path, token_path):
         
         if not creds or not creds.valid: 
             if not os.path.exists(client_secrets_path):
-                logging.error(f"ERRO CRÍTICO: client_secrets.json não encontrado em {client_secrets_path}")
+                logging.error(f"ERRO CRÍTICO: client_secret.json não encontrado em {client_secrets_path}")
                 return None
             logging.info("Executando novo fluxo de autorização (pode ser interativo para ambiente local)...")
             try:
@@ -137,6 +131,7 @@ def get_authenticated_service(client_secrets_path, token_path):
     return build('youtube', 'v3', credentials=creds)
 
 def get_facts_for_video(keywords, language, num_facts=1):
+    # ... (código mantido) ...
     logging.info(f"Obtendo {num_facts} fatos para idioma '{language}' com keywords: {keywords}")
     facts_db = {
         "en": [
@@ -166,6 +161,7 @@ def get_facts_for_video(keywords, language, num_facts=1):
     return random.sample(available_facts, num_facts)
 
 def generate_audio_from_text(text, lang, audio_file_path):
+    # ... (código mantido) ...
     logging.info(f"Gerando áudio para: '{text[:50]}...' (Idioma: {lang})")
     try:
         tts = gTTS(text=text, lang=lang, slow=False)
@@ -180,8 +176,9 @@ def generate_audio_from_text(text, lang, audio_file_path):
     return None
 
 def generate_dynamic_image_placeholder(fact_text, width, height, font_path_config, duration, fps_value):
+    # ... (código mantido) ...
     logging.info(f"Gerando imagem PLACEHOLDER para: '{fact_text[:30]}...'")
-    temp_img_path = None
+    temp_img_path = None 
     try:
         r1, g1, b1 = random.randint(40, 120), random.randint(40, 120), random.randint(40, 120)
         r2, g2, b2 = min(255, r1 + random.randint(40,80)), min(255, g1 + random.randint(40,80)), min(255, b1 + random.randint(40,80))
@@ -200,7 +197,6 @@ def generate_dynamic_image_placeholder(fact_text, width, height, font_path_confi
                 logging.info(f"Usando fonte customizada para placeholder: {font_path_config} com tamanho {current_font_size}")
             else:
                 if font_path_config: logging.warning(f"Fonte '{font_path_config}' não encontrada.")
-                # Tenta usar Arial como fallback antes do default do Pillow
                 try:
                     arial_path = os.path.join(ASSETS_DIR, "fonts", "arial.ttf") 
                     if os.path.exists(arial_path):
@@ -216,6 +212,7 @@ def generate_dynamic_image_placeholder(fact_text, width, height, font_path_confi
             logging.warning(f"Erro geral ao carregar fonte '{font_path_config}': {e_font}. Usando padrão Pillow.")
             current_font_size = max(15, int(height / 22)) 
             font_to_use = PILImageFont.load_default(size=current_font_size)
+
 
         lines = []; words = fact_text.split(); current_line = ""
         for word in words:
@@ -262,6 +259,7 @@ def generate_dynamic_image_placeholder(fact_text, width, height, font_path_confi
         return ColorClip(size=(width, height), color=(random.randint(50,100),random.randint(50,100),random.randint(50,100)), duration=duration).set_fps(fps_value), None
 
 def generate_image_with_vertex_ai_imagen(fact_text, duration, config, font_path_for_fallback, fps_value):
+    # ... (código mantido) ...
     logging.info(f"Tentando gerar imagem com Vertex AI para: '{fact_text[:30]}...'")
     project_id = config.get("gcp_project_id")
     location = config.get("gcp_location")
@@ -312,6 +310,7 @@ def generate_image_with_vertex_ai_imagen(fact_text, duration, config, font_path_
         logging.error(f"Erro ao gerar imagem com Vertex AI Imagen: {e}", exc_info=True); return generate_dynamic_image_placeholder(fact_text, 1080, 1920, font_path_for_fallback, duration, fps_value)
 
 def create_video_from_content(facts, narration_audio_files, channel_config, channel_title="Video"):
+    # ... (código mantido) ...
     logging.info(f"--- Criando vídeo para '{channel_title}' com {len(facts)} fatos ---")
     W, H = 1080, 1920; FPS_VIDEO = 24
     default_slide_duration = channel_config.get("duration_per_fact_slide_min", 6)
@@ -440,9 +439,8 @@ def generate_video_title(facts, channel_name="default"):
     logging.info(f"Título gerado: '{generated_title}'")
     return generated_title
 
-def generate_video_description(facts, config, channel_name_arg): # Função está aqui
+def generate_video_description(facts, config, channel_name_arg):
     """Gera uma descrição para o vídeo."""
-    # 'config' aqui é o dicionário de configuração do canal específico
     template = config.get("video_description_template", "Interesting facts! #shorts\n\nFact:\n{fact_text_for_description}")
     first_fact_text = facts[0] if facts else "Fatos incríveis e curiosidades!"
     description = template.format(fact_text_for_description=first_fact_text)
@@ -450,42 +448,94 @@ def generate_video_description(facts, config, channel_name_arg): # Função est�
     return description
 
 def upload_video(youtube_service, video_path, title, description, tags, category_id, privacy_status="public"):
-    logging.info(f"--- Upload: '{title}', Status: '{privacy_status}' ---")
+    logging.info(f"--- Upload INICIADO para: '{title}', Status: '{privacy_status}' ---")
+    print(f"PRINT: Iniciando upload para o vídeo: {title}") # Adicionado PRINT
+    sys.stdout.flush() # Força o flush
     response_final_upload = None 
     try:
         if not video_path or not os.path.exists(video_path):
             logging.error(f"ERRO Upload: Arquivo de vídeo NÃO encontrado em {video_path}")
+            print(f"PRINT ERROR: Arquivo de vídeo NÃO encontrado em {video_path}")
+            sys.stderr.flush()
             return None
+        
+        logging.info(f"Caminho do vídeo para upload: {video_path}")
         media = MediaFileUpload(video_path, mimetype='video/mp4', resumable=True)
+        logging.info("MediaFileUpload objeto criado.")
+        print("PRINT: MediaFileUpload objeto criado.")
+        sys.stdout.flush()
+
         request_body = {
             'snippet': {'title': title, 'description': description, 'tags': tags, 'categoryId': category_id},
             'status': {'privacyStatus': privacy_status}
         }
+        logging.info(f"Corpo da requisição para YouTube: {request_body}")
+        print(f"PRINT: Corpo da requisição para YouTube: {request_body}")
+        sys.stdout.flush()
+
         request = youtube_service.videos().insert(part=','.join(request_body.keys()), body=request_body, media_body=media)
+        logging.info("Objeto de requisição de upload do YouTube criado.")
+        print("PRINT: Objeto de requisição de upload do YouTube criado.")
+        sys.stdout.flush()
         
         done = False
+        upload_progress_counter = 0
         while not done:
+            upload_progress_counter += 1
+            logging.info(f"Tentativa de next_chunk #{upload_progress_counter}")
+            print(f"PRINT: Tentativa de next_chunk #{upload_progress_counter}")
+            sys.stdout.flush()
             status, chunk_response = request.next_chunk() 
+            
+            logging.info(f"next_chunk retornou: status={status}, chunk_response é None? {chunk_response is None}")
+            print(f"PRINT: next_chunk retornou: status={status}, chunk_response é None? {chunk_response is None}")
+            sys.stdout.flush()
+
             if status: 
                 logging.info(f"Upload: {int(status.progress() * 100)}%")
+                print(f"PRINT: Upload: {int(status.progress() * 100)}%")
+                sys.stdout.flush()
             if chunk_response is not None: 
+                logging.info(f"chunk_response recebido (não None), upload provavelmente concluído. Resposta: {chunk_response}")
+                print(f"PRINT: chunk_response recebido (não None). Resposta: {chunk_response}")
+                sys.stdout.flush()
                 done = True
-                response_final_upload = chunk_response 
+                response_final_upload = chunk_response
+            # Adicionando uma verificação para o caso de o loop rodar muitas vezes sem status e sem chunk_response
+            elif upload_progress_counter > 10 and status is None: # Tenta 10 vezes no máximo se não houver progresso
+                logging.error("Muitas tentativas de next_chunk sem progresso ou resposta. Abortando upload.")
+                print("PRINT ERROR: Muitas tentativas de next_chunk sem progresso ou resposta.")
+                sys.stderr.flush()
+                done = True # Força a saída do loop
+                response_final_upload = None # Garante que seja None
         
+        logging.info(f"Loop de upload concluído. response_final_upload é None? {response_final_upload is None}")
+        print(f"PRINT: Loop de upload concluído. response_final_upload é None? {response_final_upload is None}")
+        sys.stdout.flush()
+
         if response_final_upload: 
             video_id = response_final_upload.get('id')
             if video_id:
                 logging.info(f"Upload completo! Vídeo ID: {video_id}")
-                logging.info(f"Link (pode levar alguns minutos para ficar ativo): https://www.youtube.com/watch?v={video_id}") 
+                logging.info(f"Link: https://www.youtube.com/watch?v={video_id}")
+                print(f"PRINT SUCCESS: Upload completo! Vídeo ID: {video_id}")
+                print(f"PRINT SUCCESS: Link: https://www.youtube.com/watch?v={video_id}")
+                sys.stdout.flush()
                 return video_id
             else:
-                logging.error(f"Upload pode ter falhado ou API não retornou ID. Resposta: {response_final_upload}")
+                logging.error(f"Upload pode ter falhado ou API não retornou ID de vídeo. Resposta final: {response_final_upload}")
+                print(f"PRINT ERROR: Upload pode ter falhado ou API não retornou ID de vídeo. Resposta final: {response_final_upload}")
+                sys.stderr.flush()
                 return None
         else: 
-            logging.error("Upload não retornou uma resposta final válida após o loop.")
+            logging.error("Upload não retornou uma resposta final válida (response_final_upload é None).")
+            print("PRINT ERROR: Upload não retornou uma resposta final válida (response_final_upload é None).")
+            sys.stderr.flush()
             return None
     except Exception as e:
         logging.error(f"ERRO CRÍTICO durante upload para o YouTube: {e}", exc_info=True)
+        print(f"PRINT CRITICAL ERROR: Erro durante upload: {e}")
+        sys.stderr.flush()
         return None
 
 def main(channel_name_arg):
@@ -549,7 +599,6 @@ def main(channel_name_arg):
         channel_title=channel_name_arg
     )
     
-    # Limpeza dos áudios de narração individuais (esta linha estava com o erro de sintaxe no seu log)
     for audio_f in narration_audio_files:
         if os.path.exists(audio_f):
             try: 
@@ -565,23 +614,36 @@ def main(channel_name_arg):
     video_title = generate_video_title(actual_facts_with_audio, channel_name=channel_name_arg)
     video_description = generate_video_description(actual_facts_with_audio, config, channel_name_arg) 
     
+    logging.info(f"==> Preparando para fazer upload do vídeo: '{video_title}' para o arquivo: {video_output_path}")
+    sys.stdout.flush()
     video_id_uploaded = upload_video(
         youtube_service, 
         video_output_path, 
         video_title,
         video_description, 
-        config.get("video_tags_list", []),       # Usa "video_tags_list"
-        config.get("category_id"),               # Usa "category_id"
-        config.get("youtube_privacy_status", "public") # Usa "youtube_privacy_status"
+        config.get("video_tags_list", []),      
+        config.get("category_id"),             
+        config.get("youtube_privacy_status", "public")
     )
+    logging.info(f"==> Resultado do upload_video (video_id_uploaded): {video_id_uploaded}")
+    print(f"PRINT: Resultado do upload_video (video_id_uploaded): {video_id_uploaded}")
+    sys.stdout.flush()
+
     if video_id_uploaded:
         logging.info(f"--- SUCESSO! Canal '{channel_name_arg}'. VÍDEO PÚBLICO ID: {video_id_uploaded} ---")
+        print(f"PRINT SUCCESS: --- SUCESSO! Canal '{channel_name_arg}'. VÍDEO PÚBLICO ID: {video_id_uploaded} ---")
         if os.path.exists(video_output_path): 
             logging.info(f"Vídeo local {video_output_path} mantido para inspeção.")
     else:
-        logging.error(f"--- FALHA no upload para o canal '{channel_name_arg}'. ---"); sys.exit(1)
+        logging.error(f"--- FALHA no upload para o canal '{channel_name_arg}'. Script terminando com erro. ---")
+        print(f"PRINT ERROR: --- FALHA no upload para o canal '{channel_name_arg}'. ---")
+        sys.stderr.flush()
+        sys.exit(1)
     
     logging.info(f"--- Fim do processo para o canal '{channel_name_arg}' ---")
+    print(f"PRINT: --- Fim do processo para o canal '{channel_name_arg}' ---")
+    sys.stdout.flush()
+    time.sleep(5) # Pequena pausa para garantir que os logs sejam enviados
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Automatiza a criação e upload de vídeos de curiosidades para o YouTube.")
@@ -593,9 +655,16 @@ if __name__ == "__main__":
     except SystemExit as e:
         if e.code is None or e.code == 0: 
              logging.info(f"Script para '{args.channel if args else 'N/A'}' concluído (código de saída {e.code}).")
+             print(f"PRINT: Script para '{args.channel if args else 'N/A'}' concluído (código de saída {e.code}).")
         else: 
              logging.error(f"Script para '{args.channel if args else 'N/A'}' encerrado com erro (código {e.code}).")
+             print(f"PRINT ERROR: Script para '{args.channel if args else 'N/A'}' encerrado com erro (código {e.code}).")
              raise 
     except Exception as e_main_block:
         logging.error(f"ERRO INESPERADO NO BLOCO PRINCIPAL para '{args.channel if args else 'N/A'}': {e_main_block}", exc_info=True)
+        print(f"PRINT CRITICAL ERROR: ERRO INESPERADO NO BLOCO PRINCIPAL para '{args.channel if args else 'N/A'}': {e_main_block}")
         sys.exit(2)
+    finally:
+        print("PRINT: Bloco finally do __main__ alcançado.")
+        sys.stdout.flush()
+        sys.stderr.flush()

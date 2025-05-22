@@ -62,9 +62,9 @@ MAX_CHARS_PER_LINE_IMAGE = 40
 
 CHANNEL_CONFIGS = {
     "fizzquirk": {
-        # "video_title_template": "FizzQuirk Fact Shorts! #{short_id}", # Não mais usado, título é dinâmico
+        # "video_title_template": "FizzQuirk Fact Shorts! #{short_id}", # Título agora é dinâmico
         "video_description_template": "Astounding fact of the day from FizzQuirk!\n\nToday's Fact:\n{fact_text_for_description}\n\n#FizzQuirk #FunFacts #Shorts #AmazingFacts #Trivia #DidYouKnow",
-        "video_tags_list": ["fizzquirk", "facts", "trivia", "shorts", "fun facts", "learning", "amazing facts", "did you know"],
+        "video_tags_list": ["fizzquirk", "facts", "trivia", "shorts", "fun facts", "learning", "amazing facts", "did you know"], # CHAVE CORRETA
         "music_options": [
             "animado.mp3", 
             "fundo_misterioso.mp3",
@@ -77,7 +77,8 @@ CHANNEL_CONFIGS = {
         "num_facts_to_use": 3,
         "duration_per_fact_slide_min": 6,
         "pause_after_fact": 1.0,
-        "category_id": "27", # Education
+        "category_id": "27", # CHAVE CORRETA
+        "youtube_privacy_status": "public", # Adicionado para consistência
         "gcp_project_id": os.environ.get("GCP_PROJECT_ID"),
         "gcp_location": os.environ.get("GCP_LOCATION", "us-central1"),
         "imagen_model_name": "imagegeneration@006" 
@@ -85,7 +86,6 @@ CHANNEL_CONFIGS = {
 }
 
 def get_authenticated_service(client_secrets_path, token_path):
-    # ... (código da função mantido) ...
     logging.info(f"DEBUG_PRINT: [FUNC_AUTH] Tentando autenticar com token: {token_path} e client_secrets: {client_secrets_path}")
     creds = None
     if os.path.exists(token_path):
@@ -138,7 +138,6 @@ def get_authenticated_service(client_secrets_path, token_path):
     return build('youtube', 'v3', credentials=creds)
 
 def get_facts_for_video(keywords, language, num_facts=1):
-    # ... (função mantida) ...
     logging.info(f"Obtendo {num_facts} fatos para idioma '{language}' com keywords: {keywords}")
     facts_db = {
         "en": [
@@ -168,7 +167,6 @@ def get_facts_for_video(keywords, language, num_facts=1):
     return random.sample(available_facts, num_facts)
 
 def generate_audio_from_text(text, lang, audio_file_path):
-    # ... (função mantida) ...
     logging.info(f"Gerando áudio para: '{text[:50]}...' (Idioma: {lang})")
     try:
         tts = gTTS(text=text, lang=lang, slow=False)
@@ -183,9 +181,8 @@ def generate_audio_from_text(text, lang, audio_file_path):
     return None
 
 def generate_dynamic_image_placeholder(fact_text, width, height, font_path_config, duration, fps_value):
-    # ... (função mantida) ...
     logging.info(f"Gerando imagem PLACEHOLDER para: '{fact_text[:30]}...'")
-    temp_img_path = None 
+    temp_img_path = None
     try:
         r1, g1, b1 = random.randint(40, 120), random.randint(40, 120), random.randint(40, 120)
         r2, g2, b2 = min(255, r1 + random.randint(40,80)), min(255, g1 + random.randint(40,80)), min(255, b1 + random.randint(40,80))
@@ -216,7 +213,7 @@ def generate_dynamic_image_placeholder(fact_text, width, height, font_path_confi
             try: 
                 bbox_test = draw.textbbox((0,0), current_line + word + " ", font=font_to_use)
                 text_w = bbox_test[2] - bbox_test[0]
-            except AttributeError: text_w = draw.textlength(current_line + word + " ", font=font_to_use) 
+            except AttributeError: text_w = draw.textlength(current_line + word + " ", font=font_to_use)
 
             if text_w <= max_text_width: current_line += word + " "
             else: lines.append(current_line.strip()); current_line = word + " "
@@ -256,7 +253,6 @@ def generate_dynamic_image_placeholder(fact_text, width, height, font_path_confi
         return ColorClip(size=(width, height), color=(random.randint(50,100),random.randint(50,100),random.randint(50,100)), duration=duration).set_fps(fps_value), None
 
 def generate_image_with_vertex_ai_imagen(fact_text, duration, config, font_path_for_fallback, fps_value):
-    # ... (função mantida) ...
     logging.info(f"Tentando gerar imagem com Vertex AI para: '{fact_text[:30]}...'")
     project_id = config.get("gcp_project_id")
     location = config.get("gcp_location")
@@ -334,7 +330,7 @@ def create_video_from_content(facts, narration_audio_files, channel_config, chan
             logging.error(f"Imagem nula para '{fact_text[:30]}...'. Pulando."); continue
 
         image_clip_result = image_clip_result.set_duration(slide_duration).set_fps(FPS_VIDEO)
-        video_slide_clips.append(image_clip_result) 
+        video_slide_clips.append(image_clip_result)
 
         narration_part_for_slide = narration_clip_instance.subclip(0, min(narration_clip_instance.duration, slide_duration))
         current_segment_audio = None
@@ -408,56 +404,39 @@ def create_video_from_content(facts, narration_audio_files, channel_config, chan
             
     return video_output_path
 
-def generate_video_title(facts, channel_name="default"): # channel_name pode ser usado para customizar ainda mais se necessário
+def generate_video_title(facts, channel_name="default"):
     if not facts:
+        # Fallback se não houver fatos
         timestamp = datetime.date.today().strftime('%Y-%m-%d')
-        return f"Curiosidades Rápidas - {timestamp}"
+        return f"{channel_name.capitalize()} Curiosidades - {timestamp}"
 
     first_fact = facts[0]
-    # Tenta pegar as primeiras 5-7 palavras do primeiro fato para o título
-    words_for_title = first_fact.split()[:7]
+    words_for_title = first_fact.split()[:7] 
     title_base = " ".join(words_for_title)
     
-    # Remove pontuação final comum para títulos
     if title_base.endswith(('.', ',', ';', ':')):
         title_base = title_base[:-1]
     
     generated_title = f"Fato Incrível: {title_base.strip()}"
-    if len(first_fact.split()) > 7: # Adiciona "..." se o fato original era mais longo
+    if len(first_fact.split()) > 7: 
         generated_title += "..."
         
-    max_title_length = 95 # Limite do YouTube é 100, mas é bom ter uma margem
+    max_title_length = 95 
     if len(generated_title) > max_title_length:
-        # Tenta cortar de forma mais inteligente, mantendo palavras inteiras
-        cut_title = generated_title[:max_title_length-3] # Deixa espaço para "..."
+        cut_title = generated_title[:max_title_length-3]
         last_space = cut_title.rfind(' ')
-        if last_space != -1:
-            generated_title = cut_title[:last_space] + "..."
-        else: # Se não houver espaço para cortar, apenas trunca
-            generated_title = cut_title + "..."
+        generated_title = cut_title[:last_space] + "..." if last_space != -1 else cut_title + "..."
             
     logging.info(f"Título gerado: '{generated_title}'")
     return generated_title
 
-def generate_video_description(facts, config, channel_name_arg): # Adicionada a função que faltava
+def generate_video_description(facts, config, channel_name_arg): # Função definida
     """Gera uma descrição para o vídeo."""
     template = config.get("video_description_template", "Interesting facts! #shorts\n\nFact:\n{fact_text_for_description}")
     
-    # Para o placeholder {fact_text_for_description}, podemos usar o primeiro fato
-    # ou uma compilação, dependendo do template.
-    # Se o template só usa {fact_text_for_description}, o primeiro fato é suficiente.
-    first_fact_text = facts[0] if facts else "Descubra fatos incríveis e curiosidades!"
+    first_fact_text = facts[0] if facts else "Fatos incríveis e curiosidades!"
     
-    # Se o seu template tiver outros placeholders como {all_facts_list} ou #[CHANNEL_NAME]
-    # você pode adicioná-los aqui. Exemplo:
-    # all_facts_as_string = "\n- ".join(facts) if facts else "Nenhum fato específico listado."
-    # description = template.format(
-    # fact_text_for_description=first_fact_text,
-    # all_facts_list=all_facts_as_string,
-    # CHANNEL_HASHTAG=f"#{channel_name_arg.replace(' ', '')}"
-    # )
-    
-    # Para o template atual em CHANNEL_CONFIGS:
+    # Apenas o placeholder {fact_text_for_description} está no template do fizzquirk
     description = template.format(fact_text_for_description=first_fact_text)
     
     logging.info(f"Descrição gerada: '{description[:150]}...'")
@@ -512,14 +491,14 @@ def main(channel_name_arg):
     os.makedirs(GENERATED_IMAGES_DIR, exist_ok=True)
     os.makedirs(GENERATED_AUDIO_DIR, exist_ok=True)
     os.makedirs(ASSETS_DIR, exist_ok=True)
-    os.makedirs(os.path.join(ASSETS_DIR, "fonts"), exist_ok=True)
-    os.makedirs(os.path.join(ASSETS_DIR, "music"), exist_ok=True)
+    os.makedirs(os.path.join(ASSETS_DIR, "fonts"), exist_ok=True) # Garante que assets/fonts exista
+    os.makedirs(os.path.join(ASSETS_DIR, "music"), exist_ok=True) # Garante que assets/music exista
 
     selected_music_path = None
     music_choices = config.get("music_options", [])
     if music_choices: 
         music_file_name = random.choice(music_choices)
-        potential_music_path = os.path.join(ASSETS_DIR, "music", music_file_name)
+        potential_music_path = os.path.join(ASSETS_DIR, "music", music_file_name) # Caminho completo
         if os.path.exists(potential_music_path):
             selected_music_path = potential_music_path
             logging.info(f"Música selecionada: {selected_music_path}")
@@ -551,7 +530,7 @@ def main(channel_name_arg):
             logging.warning(f"Falha áudio para fato: '{fact[:30]}...'.")
     
     if not narration_audio_files or len(narration_audio_files) != len(actual_facts_with_audio) or not actual_facts_with_audio :
-         logging.error(f"Geração de áudio inconsistente. Fatos válidos: {len(actual_facts_with_audio)}, Áudios: {len(narration_audio_files)}. Abortando.")
+         logging.error(f"Geração de áudio inconsistente ou falhou. Fatos válidos: {len(actual_facts_with_audio)}, Áudios: {len(narration_audio_files)}. Abortando.")
          for audio_f in narration_audio_files: 
              if os.path.exists(audio_f): os.remove(audio_f)
          sys.exit(1)
@@ -565,18 +544,19 @@ def main(channel_name_arg):
     
     for audio_f in narration_audio_files: 
         if os.path.exists(audio_f):
-            try: os.remove(audio_f)
+            try: os.remove(audio_f); logging.info(f"Áudio temp removido: {audio_f}")
             except Exception as e: logging.warning(f"Falha ao remover áudio temp {audio_f}: {e}")
 
     if not video_output_path: logging.error("Falha criar vídeo."); sys.exit(1)
 
     video_title = generate_video_title(actual_facts_with_audio, channel_name=channel_name_arg)
-    # CORRIGIDO: Chamando a função generate_video_description com os parâmetros corretos
     video_description = generate_video_description(actual_facts_with_audio, config, channel_name_arg) 
     
     video_id_uploaded = upload_video(youtube_service, video_output_path, video_title,
-                                     video_description, config["video_tags_list"],
-                                     config["video_category_id"], config["youtube_privacy_status"])
+                                     video_description, 
+                                     config.get("video_tags_list"),       # CORRIGIDO
+                                     config.get("category_id"),          # CORRIGIDO
+                                     config.get("youtube_privacy_status", "public")) # CORRIGIDO
     if video_id_uploaded:
         logging.info(f"--- SUCESSO! Canal '{channel_name_arg}'. VÍDEO PÚBLICO ID: {video_id_uploaded} ---")
         if os.path.exists(video_output_path): 

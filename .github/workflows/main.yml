@@ -3,8 +3,8 @@ name: Gerar e Publicar Vídeos FizzQuirk
 on:
   workflow_dispatch: # Permite execução manual
   schedule:
-    - cron: '0 11 * * *'  # Exemplo: Todo dia às 11:00 UTC (8:00 AM BRT seu fuso -3)
-    - cron: '0 21 * * *' # Exemplo: Todo dia às 21:00 UTC (6:00 PM BRT seu fuso -3)
+    - cron: '0 11 * * *'  # Exemplo: Todo dia às 11:00 UTC (8:00 AM BRT / UTC-3) - Ajuste para sua necessidade
+    - cron: '0 21 * * *' # Exemplo: Todo dia às 21:00 UTC (6:00 PM BRT / UTC-3) - Ajuste para sua necessidade
 
 jobs:
   build_and_publish_fizzquirk: 
@@ -16,7 +16,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
-          persist-credentials: true # Importante para o commit do history
+          persist-credentials: true # Importante para o commit do histórico
 
       - name: Create credentials directory
         run: |
@@ -25,10 +25,17 @@ jobs:
           echo "Pasta credentials/ criada."
 
       - name: Decodificar arquivos .base64 do Repositório
+        # !! VERIFIQUE OS NOMES DOS SEUS ARQUIVOS .base64 AQUI !!
+        # Esta etapa assume que seus arquivos no repositório estão em:
+        # - credentials/canal1_client_secret.json.base64
+        # - credentials/canal1_token.json.base64
+        # Se os nomes dos seus arquivos forem diferentes, ajuste as variáveis INPUT_CS_BASE64 e INPUT_TOKEN_BASE64 abaixo.
         run: |
           echo "--- Iniciando decodificação dos arquivos Base64 do Repositório ---"
-          INPUT_CS_BASE64="credentials/canal1_client_secret.json.base64"
+          
+          INPUT_CS_BASE64="credentials/canal1_client_secret.json.base64" # <-- VERIFIQUE/ADAPTE ESTE CAMINHO
           OUTPUT_CS_JSON="credentials/client_secret.json"
+          
           if [ -f "$INPUT_CS_BASE64" ]; then
             echo "Decodificando client_secret de $INPUT_CS_BASE64 para $OUTPUT_CS_JSON..."
             openssl base64 -d -in "$INPUT_CS_BASE64" -out "$OUTPUT_CS_JSON"
@@ -39,10 +46,13 @@ jobs:
             echo "client_secret.json decodificado com sucesso."
           else
             echo "ERRO CRÍTICO: Arquivo Base64 do client_secret ($INPUT_CS_BASE64) NÃO encontrado."
+            echo "Verifique se o arquivo existe no caminho especificado e se o nome está correto."
             exit 1
           fi
-          INPUT_TOKEN_BASE64="credentials/canal1_token.json.base64"
+
+          INPUT_TOKEN_BASE64="credentials/canal1_token.json.base64" # <-- VERIFIQUE/ADAPTE ESTE CAMINHO
           OUTPUT_TOKEN_JSON="credentials/token.json"
+
           if [ -f "$INPUT_TOKEN_BASE64" ]; then
             echo "Decodificando token de $INPUT_TOKEN_BASE64 para $OUTPUT_TOKEN_JSON..."
             openssl base64 -d -in "$INPUT_TOKEN_BASE64" -out "$OUTPUT_TOKEN_JSON"
@@ -91,20 +101,41 @@ jobs:
           echo "Verificando instalação do ImageMagick e caminho do 'convert':"
           which convert || echo "'convert' não encontrado no PATH"
           convert -version || echo "Falha ao executar 'convert -version'"
+          
           POLICY_XML_PATH=$(convert -debug configure /dev/null 2>&1 | grep -oP "Searching for configure file:\s*\K[^']+(?=')" | head -n 1)
+          
           if [ -z "$POLICY_XML_PATH" ] || [ ! -f "$POLICY_XML_PATH" ]; then
-            echo "POLICY_XML_PATH não encontrado ou inválido. Tentando caminhos comuns..."
+            echo "POLICY_XML_PATH não encontrado ou inválido via 'convert -debug'. Tentando caminhos comuns..."
             _COMMON_POLICY_PATHS_STR="/etc/ImageMagick-6/policy.xml /etc/ImageMagick/policy.xml /usr/local/etc/ImageMagick-6/policy.xml /usr/share/ImageMagick-6/policy.xml"
             for p_path in $_COMMON_POLICY_PATHS_STR; do 
-              if [ -f "$p_path" ]; then POLICY_XML_PATH="$p_path"; echo "Encontrado policy.xml no fallback: $POLICY_XML_PATH"; break; fi
+              echo "Verificando fallback: $p_path"
+              if [ -f "$p_path" ]; then
+                POLICY_XML_PATH="$p_path"
+                echo "Encontrado policy.xml no fallback: $POLICY_XML_PATH"
+                break
+              fi
             done
           fi
+          
           if [ -f "$POLICY_XML_PATH" ]; then
-            echo "Arquivo policy.xml encontrado em: $POLICY_XML_PATH"; sudo cp "$POLICY_XML_PATH" "${POLICY_XML_PATH}.bak"
-            echo "Modificando $POLICY_XML_PATH..."; sudo sed -i.bak 's/<policy domain="coder" rights="none" pattern="TEXT" \/>//g' "$POLICY_XML_PATH"; sudo sed -i 's/<policy domain="coder" rights="none" pattern="LABEL" \/>//g' "$POLICY_XML_PATH"; sudo sed -i 's/<policy domain="coder" rights="none" pattern="MVG" \/>//g' "$POLICY_XML_PATH"; sudo sed -i 's/<policy domain="coder" rights="none" pattern="MSL" \/>//g' "$POLICY_XML_PATH"; sudo sed -i 's/<policy domain="path" rights="none" pattern="@\*"\/>//g' "$POLICY_XML_PATH"; sudo sed -i 's/<policy domain="path" rights="none" pattern="\*"\/>//g' "$POLICY_XML_PATH"
-            echo "Conteúdo de $POLICY_XML_PATH após modificação:"; sudo grep -iE 'domain="path"|domain="coder"' "$POLICY_XML_PATH" || echo "Nenhuma política."
-          else echo "AVISO CRÍTICO: policy.xml não encontrado."; fi
-          echo "Ajuste da política do ImageMagick concluído."
+            echo "Arquivo policy.xml encontrado em: $POLICY_XML_PATH"
+            sudo cp "$POLICY_XML_PATH" "${POLICY_XML_PATH}.bak"
+            echo "Backup de policy.xml criado em ${POLICY_XML_PATH}.bak"
+            
+            echo "Modificando $POLICY_XML_PATH para permitir operações do TextClip..."
+            sudo sed -i.bak 's/<policy domain="coder" rights="none" pattern="TEXT" \/>//g' "$POLICY_XML_PATH"
+            sudo sed -i 's/<policy domain="coder" rights="none" pattern="LABEL" \/>//g' "$POLICY_XML_PATH"
+            sudo sed -i 's/<policy domain="coder" rights="none" pattern="MVG" \/>//g' "$POLICY_XML_PATH"
+            sudo sed -i 's/<policy domain="coder" rights="none" pattern="MSL" \/>//g' "$POLICY_XML_PATH"
+            sudo sed -i 's/<policy domain="path" rights="none" pattern="@\*"\/>//g' "$POLICY_XML_PATH" 
+            sudo sed -i 's/<policy domain="path" rights="none" pattern="\*"\/>//g' "$POLICY_XML_PATH"
+
+            echo "Conteúdo de $POLICY_XML_PATH após modificação (linhas relevantes de coder/path):"
+            sudo grep -iE 'domain="path"|domain="coder"' "$POLICY_XML_PATH" || echo "Nenhuma política de path/coder encontrada após sed."
+          else
+            echo "AVISO CRÍTICO: policy.xml do ImageMagick não foi encontrado automaticamente ou nos caminhos comuns. MoviePy TextClip pode falhar."
+          fi
+          echo "Instalação e ajuste da política do ImageMagick concluídos."
 
       - name: Limpar cache do pip
         run: pip cache purge
@@ -114,21 +145,28 @@ jobs:
 
       - name: Executar Script de Automação
         env:
-          # GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GCP_SA_KEY }} # Para Vertex AI
+          # Descomente e configure estes secrets no seu repositório GitHub (Settings > Secrets and variables > Actions)
+          # se for usar Vertex AI ou Gemini API no futuro.
+          # GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GCP_SA_KEY_JSON_PATH }} 
           # GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           # GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
-          # GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }} # Para Gemini API
+          # GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }} 
         run: python -u scripts/main.py --channel "fizzquirk"
         
       - name: Commit e push topic_history.txt
+        # Esta etapa só roda se a etapa "Executar Script de Automação" for bem-sucedida (exit code 0)
         if: success() 
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          
+          # Verifica se o arquivo de histórico existe E se foi modificado
           if [ -f topic_history.txt ] && ! git diff --quiet topic_history.txt; then
             git add topic_history.txt
             git commit -m "Update topic history [skip ci]"
             git push
+          elif [ ! -f topic_history.txt ]; then
+            echo "Arquivo topic_history.txt não encontrado para commitar (pode ser a primeira execução)."
           else
-            echo "Nenhuma alteração no topic_history.txt para commitar ou arquivo não existe."
+            echo "Nenhuma alteração no topic_history.txt para commitar."
           fi

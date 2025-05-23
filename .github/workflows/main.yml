@@ -1,16 +1,22 @@
-name: Automatizar YouTube Video
+name: Gerar e Publicar Vídeos FizzQuirk
 
 on:
-  workflow_dispatch:
-  # push:
-  #   branches: [ main ]
+  workflow_dispatch: # Permite execução manual
+  schedule:
+    - cron: '0 11 * * *'  # Exemplo: Todo dia às 11:00 UTC (8:00 AM BRT seu fuso -3)
+    - cron: '0 21 * * *' # Exemplo: Todo dia às 21:00 UTC (6:00 PM BRT seu fuso -3)
 
 jobs:
-  build:
+  build_and_publish_fizzquirk: 
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # Necessário para fazer commit do topic_history.txt
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+        with:
+          persist-credentials: true # Importante para o commit do history
 
       - name: Create credentials directory
         run: |
@@ -21,7 +27,6 @@ jobs:
       - name: Decodificar arquivos .base64 do Repositório
         run: |
           echo "--- Iniciando decodificação dos arquivos Base64 do Repositório ---"
-          
           INPUT_CS_BASE64="credentials/canal1_client_secret.json.base64"
           OUTPUT_CS_JSON="credentials/client_secret.json"
           if [ -f "$INPUT_CS_BASE64" ]; then
@@ -36,7 +41,6 @@ jobs:
             echo "ERRO CRÍTICO: Arquivo Base64 do client_secret ($INPUT_CS_BASE64) NÃO encontrado."
             exit 1
           fi
-          
           INPUT_TOKEN_BASE64="credentials/canal1_token.json.base64"
           OUTPUT_TOKEN_JSON="credentials/token.json"
           if [ -f "$INPUT_TOKEN_BASE64" ]; then
@@ -62,7 +66,6 @@ jobs:
             echo "Arquivo credentials/client_secret.json NÃO encontrado para inspeção."
           fi
           echo "--- Fim da inspeção de client_secret.json ---"
-        continue-on-error: true
 
       - name: Inspecionar token.json decodificado
         if: always()
@@ -74,14 +77,13 @@ jobs:
             echo "Arquivo credentials/token.json NÃO encontrado para inspeção."
           fi
           echo "--- Fim da inspeção de token.json ---"
-        continue-on-error: true
-
+      
       - name: Configurar Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
 
-      - name: Install ImageMagick and Adjust Policy # PASSO COM MODIFICAÇÃO NO LOOP
+      - name: Install ImageMagick and Adjust Policy
         run: |
           echo "Tentando instalar ImageMagick..."
           sudo apt-get update -y
@@ -89,49 +91,20 @@ jobs:
           echo "Verificando instalação do ImageMagick e caminho do 'convert':"
           which convert || echo "'convert' não encontrado no PATH"
           convert -version || echo "Falha ao executar 'convert -version'"
-          
-          echo "Tentando localizar e modificar policy.xml do ImageMagick..."
           POLICY_XML_PATH=$(convert -debug configure /dev/null 2>&1 | grep -oP "Searching for configure file:\s*\K[^']+(?=')" | head -n 1)
-
           if [ -z "$POLICY_XML_PATH" ] || [ ! -f "$POLICY_XML_PATH" ]; then
-            echo "POLICY_XML_PATH não encontrado ou inválido via 'convert -debug'. Tentando caminhos comuns..."
-            # Fallback para caminhos comuns se a detecção automática falhar
+            echo "POLICY_XML_PATH não encontrado ou inválido. Tentando caminhos comuns..."
             _COMMON_POLICY_PATHS_STR="/etc/ImageMagick-6/policy.xml /etc/ImageMagick/policy.xml /usr/local/etc/ImageMagick-6/policy.xml /usr/share/ImageMagick-6/policy.xml"
-            for p_path in $_COMMON_POLICY_PATHS_STR; do # Loop simplificado
-              echo "Verificando fallback: $p_path"
-              if [ -f "$p_path" ]; then
-                POLICY_XML_PATH="$p_path"
-                echo "Encontrado policy.xml no fallback: $POLICY_XML_PATH"
-                break
-              fi
+            for p_path in $_COMMON_POLICY_PATHS_STR; do 
+              if [ -f "$p_path" ]; then POLICY_XML_PATH="$p_path"; echo "Encontrado policy.xml no fallback: $POLICY_XML_PATH"; break; fi
             done
           fi
-
           if [ -f "$POLICY_XML_PATH" ]; then
-            echo "Arquivo policy.xml encontrado em: $POLICY_XML_PATH"
-            sudo cp "$POLICY_XML_PATH" "${POLICY_XML_PATH}.bak"
-            echo "Backup de policy.xml criado em ${POLICY_XML_PATH}.bak"
-            
-            echo "Modificando $POLICY_XML_PATH para permitir operações do TextClip..."
-            # Comenta políticas restritivas.
-            sudo sed -i.bak 's/<policy domain="coder" rights="none" pattern="TEXT" \/>//g' "$POLICY_XML_PATH"
-            sudo sed -i 's/<policy domain="coder" rights="none" pattern="LABEL" \/>//g' "$POLICY_XML_PATH"
-            sudo sed -i 's/<policy domain="coder" rights="none" pattern="MVG" \/>//g' "$POLICY_XML_PATH"
-            sudo sed -i 's/<policy domain="coder" rights="none" pattern="MSL" \/>//g' "$POLICY_XML_PATH"
-            # A política que bloqueia '@' é tipicamente a de 'path'.
-            sudo sed -i 's/<policy domain="path" rights="none" pattern="@\*"\/>//g' "$POLICY_XML_PATH"
-            # Se a política específica de @* não existir, pode ser uma mais genérica para paths:
-            sudo sed -i 's/<policy domain="path" rights="none" pattern="\*"\/>//g' "$POLICY_XML_PATH"
-            
-            echo "Conteúdo de $POLICY_XML_PATH após modificação (linhas relevantes de coder/path):"
-            sudo grep -iE 'domain="path"|domain="coder"' "$POLICY_XML_PATH" || echo "Nenhuma política de path/coder encontrada após sed."
-          else
-            echo "AVISO CRÍTICO: policy.xml do ImageMagick não foi encontrado automaticamente ou nos caminhos comuns. MoviePy TextClip pode falhar."
-          fi
-          echo "Instalação e ajuste da política do ImageMagick concluídos."
-          echo "Verificando novamente o executável 'convert':"
-          ls -l /usr/bin/convert || echo "'/usr/bin/convert' ainda não existe ou não está acessível."
-
+            echo "Arquivo policy.xml encontrado em: $POLICY_XML_PATH"; sudo cp "$POLICY_XML_PATH" "${POLICY_XML_PATH}.bak"
+            echo "Modificando $POLICY_XML_PATH..."; sudo sed -i.bak 's/<policy domain="coder" rights="none" pattern="TEXT" \/>//g' "$POLICY_XML_PATH"; sudo sed -i 's/<policy domain="coder" rights="none" pattern="LABEL" \/>//g' "$POLICY_XML_PATH"; sudo sed -i 's/<policy domain="coder" rights="none" pattern="MVG" \/>//g' "$POLICY_XML_PATH"; sudo sed -i 's/<policy domain="coder" rights="none" pattern="MSL" \/>//g' "$POLICY_XML_PATH"; sudo sed -i 's/<policy domain="path" rights="none" pattern="@\*"\/>//g' "$POLICY_XML_PATH"; sudo sed -i 's/<policy domain="path" rights="none" pattern="\*"\/>//g' "$POLICY_XML_PATH"
+            echo "Conteúdo de $POLICY_XML_PATH após modificação:"; sudo grep -iE 'domain="path"|domain="coder"' "$POLICY_XML_PATH" || echo "Nenhuma política."
+          else echo "AVISO CRÍTICO: policy.xml não encontrado."; fi
+          echo "Ajuste da política do ImageMagick concluído."
 
       - name: Limpar cache do pip
         run: pip cache purge
@@ -140,6 +113,22 @@ jobs:
         run: pip install --upgrade -r requirements.txt
 
       - name: Executar Script de Automação
-        run: python -u scripts/main.py --channel "fizzquirk"
         env:
-          EXAMPLE_SECRET: ${{ secrets.EXAMPLE_SECRET_PARA_TESTE }}
+          # GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GCP_SA_KEY }} # Para Vertex AI
+          # GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          # GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
+          # GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }} # Para Gemini API
+        run: python -u scripts/main.py --channel "fizzquirk"
+        
+      - name: Commit e push topic_history.txt
+        if: success() 
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          if [ -f topic_history.txt ] && ! git diff --quiet topic_history.txt; then
+            git add topic_history.txt
+            git commit -m "Update topic history [skip ci]"
+            git push
+          else
+            echo "Nenhuma alteração no topic_history.txt para commitar ou arquivo não existe."
+          fi

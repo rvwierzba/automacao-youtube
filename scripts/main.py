@@ -8,21 +8,27 @@ import random
 import numpy as np
 import datetime 
 
+# Para geração de áudio
 from gtts import gTTS
+
+# Para edição de vídeo
 from moviepy.editor import (AudioFileClip, TextClip, CompositeVideoClip,
                             ColorClip, ImageClip, CompositeAudioClip,
                             concatenate_videoclips, concatenate_audioclips, AudioClip)
 from moviepy.config import change_settings
 import moviepy.config as MOPY_CONFIG
 
+# Para o placeholder de imagem e manipulação
 from PIL import Image as PILImage, ImageDraw as PILImageDraw, ImageFont as PILImageFont
 
+# Para API do YouTube
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.http import MediaFileUpload
 
+# Tenta importar a biblioteca do Vertex AI (para Imagen)
 try:
     from google.cloud import aiplatform
     VERTEX_AI_SDK_AVAILABLE = True
@@ -36,6 +42,7 @@ except ImportError:
 logging.basicConfig(level=logging.INFO, stream=sys.stdout, format='%(asctime)s - %(levelname)s - %(message)s')
 SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
 
+# --- Constantes e Configurações ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(CURRENT_DIR) 
 
@@ -47,16 +54,18 @@ GENERATED_VIDEOS_DIR = os.path.join(BASE_DIR, 'generated_videos')
 GENERATED_IMAGES_DIR = os.path.join(BASE_DIR, 'generated_images') 
 GENERATED_AUDIO_DIR = os.path.join(BASE_DIR, 'temp_audio') 
 ASSETS_DIR = os.path.join(BASE_DIR, 'assets')
+TOPIC_FILE_PATH = os.path.join(BASE_DIR, 'topics.txt') # Arquivo com lista de temas
+HISTORY_FILE_PATH = os.path.join(BASE_DIR, 'topic_history.txt') # Arquivo para histórico de temas
+HISTORY_LENGTH = 10 # Não repetir os últimos X temas (ajuste se sua lista de tópicos for pequena)
 
 FPS_VIDEO = 24
-IMAGE_DURATION_SECONDS = 5 
 MAX_WORDS_PER_LINE_TTS = 10 
 MAX_CHARS_PER_LINE_IMAGE = 40
 
 CHANNEL_CONFIGS = {
     "fizzquirk": {
-        "video_description_template": "Astounding fact of the day from FizzQuirk!\n\nToday's Fact:\n{fact_text_for_description}\n\n#FizzQuirk #FunFacts #Shorts #AmazingFacts #Trivia #DidYouKnow",
-        "video_tags_list": ["fizzquirk", "facts", "trivia", "shorts", "fun facts", "learning", "amazing facts", "did you know"],
+        "video_description_template": "Descubra fatos incríveis sobre {topic_title}!\n\nNeste vídeo:\n- {fact_text_for_description}\n\n#FizzQuirk #Curiosidades #{topic_hashtag} #FatosIncriveis",
+        "video_tags_list": ["fizzquirk", "curiosidades", "fatos", "aprender", "shorts"], 
         "music_options": [
             "animado.mp3", 
             "fundo_misterioso.mp3",
@@ -64,11 +73,11 @@ CHANNEL_CONFIGS = {
         ],
         "default_music_if_list_empty": None,
         "music_volume": 0.07,
-        "gtts_language": "en",
+        "gtts_language": "pt-br", 
         "text_font_path_for_image_placeholder": None, 
-        "num_facts_to_use": 3,
-        "duration_per_fact_slide_min": 6,
-        "pause_after_fact": 1.0,
+        "num_facts_per_video": 15, # Ajuste para duração: 15 fatos * ~9s/fato = ~2.25 min. Para 3-7 min, use 20-45.
+        "duration_per_fact_slide_min": 7, 
+        "pause_after_fact": 1.2, 
         "category_id": "27", 
         "youtube_privacy_status": "public", 
         "gcp_project_id": os.environ.get("GCP_PROJECT_ID"),
@@ -78,7 +87,6 @@ CHANNEL_CONFIGS = {
 }
 
 def get_authenticated_service(client_secrets_path, token_path):
-    # ... (código da função mantido igual à versão anterior) ...
     logging.info(f"DEBUG_PRINT: [FUNC_AUTH] Tentando autenticar com token: {token_path} e client_secrets: {client_secrets_path}")
     creds = None
     if os.path.exists(token_path):
@@ -130,35 +138,121 @@ def get_authenticated_service(client_secrets_path, token_path):
     logging.info("Serviço YouTube autenticado com sucesso.")
     return build('youtube', 'v3', credentials=creds)
 
-def get_facts_for_video(keywords, language, num_facts=1):
-    # ... (código mantido) ...
-    logging.info(f"Obtendo {num_facts} fatos para idioma '{language}' com keywords: {keywords}")
-    facts_db = {
-        "en": [
-            "A group of flamingos is called a 'flamboyance'.", "Honey is the only food that never spoils.",
-            "The unicorn is the national animal of Scotland.", "A shrimp's heart is in its head.",
-            "Slugs have four noses.", "It is impossible for most people to lick their own elbow.",
-            "A bolt of lightning contains enough energy to toast 100,000 slices of bread.",
-            "The oldest known living tree is over 4,800 years old."
-        ],
-        "pt-br": [ 
-            "Um grupo de flamingos é chamado de 'bando' ou, poeticamente, 'flamboiada'.", 
-            "O mel é o único alimento que realmente nunca estraga.",
-            "O unicórnio é o animal nacional da Escócia.", 
-            "O coração de um camarão fica na cabeça.",
-            "Lesmas têm quatro narizes, ou melhor, tentáculos que funcionam como narizes."
-        ]
-    }
-    logging.warning(f"ALERTA: Usando lista de fatos placeholder para '{language}'. Adapte 'get_facts_for_video' para conteúdo real.")
-    available_facts = facts_db.get(language, facts_db.get("en", [])) 
+def choose_topic(topic_file, history_file, history_len):
+    if not os.path.exists(topic_file):
+        logging.error(f"Arquivo de tópicos '{topic_file}' não encontrado!")
+        return "Curiosidades Gerais" 
+    
+    with open(topic_file, 'r', encoding='utf-8') as f:
+        all_topics = [line.strip() for line in f if line.strip()]
+    
+    if not all_topics:
+        logging.error(f"Arquivo de tópicos '{topic_file}' está vazio!")
+        return "Curiosidades Aleatórias" 
 
-    if not available_facts:
-        logging.error(f"Nenhuma lista de fatos encontrada para o idioma '{language}' ou fallback 'en'.")
+    recent_history = []
+    if os.path.exists(history_file):
+        with open(history_file, 'r', encoding='utf-8') as hf:
+            recent_history = [line.strip() for line in hf]
+            # Pega apenas os N últimos para evitar repetição recente
+            recent_history = recent_history[-history_len:] 
+            
+    available_topics = [topic for topic in all_topics if topic not in recent_history]
+    
+    selected_topic = None
+    if not available_topics: 
+        logging.warning(f"Todos os {len(all_topics)} tópicos foram usados nos últimos {history_len} vídeos. Reciclando da lista completa.")
+        if all_topics: # Garante que all_topics não está vazio
+            selected_topic = random.choice(all_topics)
+        else: # Caso extremo: all_topics está vazio (embora já verificado acima)
+            selected_topic = "Fatos Diversos" 
+    else:
+        selected_topic = random.choice(available_topics)
+        
+    # Atualiza o histórico
+    try:
+        with open(history_file, 'a', encoding='utf-8') as hf:
+            hf.write(f"{selected_topic}\n")
+        # Opcional: Limpa o histórico antigo para não crescer indefinidamente demais
+        with open(history_file, 'r', encoding='utf-8') as hf:
+            lines = hf.readlines()
+        # Mantém um histórico um pouco maior que o usado para verificação, para dar margem
+        if len(lines) > max(history_len * 2, 20): # Ex: mantém no máximo 20 ou 2x o history_len
+            with open(history_file, 'w', encoding='utf-8') as hf:
+                hf.writelines(lines[-(max(history_len * 2, 20)):])
+    except Exception as e:
+        logging.error(f"Erro ao atualizar o arquivo de histórico '{history_file}': {e}")
+        
+    logging.info(f"Tópico escolhido: {selected_topic}")
+    return selected_topic
+
+def get_facts_for_video(topic, language, num_facts=1):
+    logging.info(f"Obtendo {num_facts} fatos para o TEMA: '{topic}' (Idioma: {language})")
+    
+    # ----- INÍCIO DO PLACEHOLDER DE FATOS -----
+    # Esta seção ainda é um placeholder. Para conteúdo real, você precisará:
+    # 1. Criar um banco de dados de fatos categorizados por tema.
+    # 2. OU Integrar com uma API de LLM (como Gemini) para gerar fatos baseados no 'topic'.
+    #    Prompt exemplo para Gemini: "Gere {num_facts} fatos curtos, interessantes e verdadeiros sobre '{topic}' em {language}.
+    #                                 Cada fato deve ser uma frase concisa e surpreendente. Formato: lista de strings."
+    # ------------------------------------------
+    
+    # Exemplo de fatos placeholder genéricos, mas usando o tema na formulação
+    generic_fact_templates_en = [
+        f"Regarding the topic of {topic}, it's known that a group of flamingos is called a 'flamboyance'.",
+        f"An interesting point when discussing {topic} is that honey is the only food that never spoils.",
+        f"Speaking of {topic}, did you know the unicorn is the national animal of Scotland?",
+        f"A curious fact related to {topic}: a shrimp's heart is in its head.",
+        f"When considering {topic}, remember that slugs actually have four noses.",
+        f"It's nearly impossible for most people to lick their own elbow, a fun thought related to {topic}!",
+        f"A bolt of lightning, relevant to discussions about energy and {topic}, contains enough power to toast 100,000 bread slices.",
+        f"The oldest living tree, a testament to endurance and {topic}, is over 4,800 years old.",
+        f"Butterflies, in the context of senses and {topic}, taste with their feet.",
+        f"An ostrich's eye is bigger than its brain, a quirky detail when exploring {topic}.",
+        f"It's surprising that most lipstick contains fish scales, a fact that touches upon ingredients and {topic}.",
+        f"Rats multiply so quickly; relevant to cycles and {topic}, in 18 months, two rats could have over a million descendants.",
+        f"The 'Mona Lisa' has no eyebrows, an art mystery related to perceptions and {topic}.",
+        f"Humans share 50% of their DNA with bananas, a genetic curiosity connected to life and {topic}.",
+        f"A crocodile cannot stick its tongue out, a peculiar animal fact for {topic}."
+    ]
+    generic_fact_templates_pt_br = [
+        f"Sobre o tema '{topic}', você sabia que um grupo de flamingos é chamado de 'bando'?",
+        f"Um ponto interessante ao discutir '{topic}' é que o mel é o único alimento que nunca estraga.",
+        f"Falando em '{topic}', o unicórnio é o animal nacional da Escócia.",
+        f"Um fato curioso relacionado a '{topic}': o coração de um camarão fica na cabeça.",
+        f"Ao considerar '{topic}', lembre-se que lesmas têm quatro narizes.",
+        f"É quase impossível para a maioria das pessoas lamber o próprio cotovelo, um pensamento divertido relacionado a '{topic}'!",
+        f"Um raio, relevante para discussões sobre energia e '{topic}', contém energia suficiente para torrar 100.000 fatias de pão.",
+        f"A árvore viva mais antiga, um testamento à resistência e '{topic}', tem mais de 4.800 anos.",
+        f"Borboletas, no contexto dos sentidos e '{topic}', sentem o sabor com os pés.",
+        f"O olho de um avestruz é maior que seu cérebro, um detalhe peculiar ao explorar '{topic}'.",
+        f"É surpreendente que a maioria dos batons contenha escamas de peixe, um fato que toca em ingredientes e '{topic}'.",
+        f"Ratos se multiplicam rapidamente; relevante para ciclos e '{topic}', em 18 meses, dois ratos podem ter mais de um milhão de descendentes.",
+        f"A 'Mona Lisa' não tem sobrancelhas, um mistério da arte relacionado a percepções e '{topic}'.",
+        f"Humanos compartilham 50% de seu DNA com bananas, uma curiosidade genética conectada à vida e '{topic}'.",
+        f"Um crocodilo não consegue colocar a língua para fora, um fato animal peculiar para '{topic}'."
+    ]
+    
+    logging.warning(f"ALERTA: Usando lista de fatos placeholder levemente adaptada para o tema '{topic}'. Substitua por geração de fatos reais.")
+    
+    base_facts_list = generic_fact_templates_pt_br if language == "pt-br" else generic_fact_templates_en
+    
+    if not base_facts_list:
+        logging.error(f"Nenhuma lista de fatos placeholder encontrada para o idioma '{language}'.")
         return []
-    if len(available_facts) < num_facts:
-        logging.warning(f"Fatos insuficientes ({len(available_facts)}) para '{language}'. Solicitados: {num_facts}. Usando todos disponíveis.")
-        return available_facts
-    return random.sample(available_facts, num_facts)
+    
+    # Garante que tenhamos fatos suficientes, repetindo se necessário
+    selected_facts = []
+    if len(base_facts_list) >= num_facts:
+        selected_facts = random.sample(base_facts_list, num_facts)
+    else: 
+        logging.warning(f"Fatos placeholder insuficientes ({len(base_facts_list)}) para {num_facts} fatos sobre '{topic}'. Fatos serão repetidos.")
+        for i in range(num_facts):
+            selected_facts.append(base_facts_list[i % len(base_facts_list)]) # Repete da lista base
+        random.shuffle(selected_facts) # Embaralha mesmo se repetido
+
+    return selected_facts
+
 
 def generate_audio_from_text(text, lang, audio_file_path):
     # ... (código mantido) ...
@@ -310,7 +404,6 @@ def generate_image_with_vertex_ai_imagen(fact_text, duration, config, font_path_
         logging.error(f"Erro ao gerar imagem com Vertex AI Imagen: {e}", exc_info=True); return generate_dynamic_image_placeholder(fact_text, 1080, 1920, font_path_for_fallback, duration, fps_value)
 
 def create_video_from_content(facts, narration_audio_files, channel_config, channel_title="Video"):
-    # ... (código mantido) ...
     logging.info(f"--- Criando vídeo para '{channel_title}' com {len(facts)} fatos ---")
     W, H = 1080, 1920; FPS_VIDEO = 24
     default_slide_duration = channel_config.get("duration_per_fact_slide_min", 6)
@@ -414,21 +507,27 @@ def create_video_from_content(facts, narration_audio_files, channel_config, chan
             
     return video_output_path
 
-def generate_video_title(facts, channel_name="default"):
+def generate_video_title(facts, topic_title, channel_name="default"):
     if not facts:
         timestamp = datetime.date.today().strftime('%Y-%m-%d')
-        return f"{channel_name.capitalize()} Curiosidades - {timestamp}"
+        # Usa o nome do canal se o tópico for muito genérico ou não existir
+        title_base = topic_title if topic_title and topic_title.lower() not in ["curiosidades gerais", "curiosidades aleatórias"] else channel_name.capitalize()
+        return f"{title_base} - Curiosidades do Dia {timestamp}"
 
-    first_fact = facts[0]
-    words_for_title = first_fact.split()[:7] 
-    title_base = " ".join(words_for_title)
+    # Tenta usar o tópico no título de forma mais proeminente
+    if topic_title and topic_title.lower() not in ["curiosidades gerais", "curiosidades aleatórias", "fatos diversos"]:
+        title_base = topic_title
+    else: # Se o tópico for genérico, usa parte do primeiro fato
+        first_fact_preview = " ".join(facts[0].split()[:5]) # Menos palavras do fato
+        if len(facts[0].split()) > 5: first_fact_preview += "..."
+        title_base = f"{topic_title}: {first_fact_preview}"
     
+    # Remove pontuação final comum para títulos
     if title_base.endswith(('.', ',', ';', ':')):
         title_base = title_base[:-1]
     
-    generated_title = f"Fato Incrível: {title_base.strip()}"
-    if len(first_fact.split()) > 7: 
-        generated_title += "..."
+    # Adiciona um toque do canal ou um slogan
+    generated_title = f"{title_base.strip()} | Curiosidades FizzQuirk!" 
         
     max_title_length = 95 
     if len(generated_title) > max_title_length:
@@ -439,18 +538,36 @@ def generate_video_title(facts, channel_name="default"):
     logging.info(f"Título gerado: '{generated_title}'")
     return generated_title
 
-def generate_video_description(facts, config, channel_name_arg):
-    """Gera uma descrição para o vídeo."""
-    template = config.get("video_description_template", "Interesting facts! #shorts\n\nFact:\n{fact_text_for_description}")
-    first_fact_text = facts[0] if facts else "Fatos incríveis e curiosidades!"
-    description = template.format(fact_text_for_description=first_fact_text)
-    logging.info(f"Descrição gerada: '{description[:150]}...'")
+def generate_video_description(facts, config, channel_name_arg, topic_title):
+    template = config.get("video_description_template", "Descubra fatos incríveis sobre {topic_title}!\n\nNeste vídeo:\n{fact_text_for_description}\n\n#Curiosidades #{topic_hashtag}")
+    
+    facts_summary = "\n- ".join(facts) # Lista todos os fatos, um por linha
+    if not facts:
+        facts_summary = "Muitas curiosidades interessantes exploradas neste vídeo!"
+
+    # Cria uma hashtag a partir do tópico, removendo espaços e caracteres especiais, e minúsculas
+    topic_hashtag_clean = "".join(c for c in topic_title if c.isalnum()).lower()
+    if not topic_hashtag_clean: topic_hashtag_clean = channel_name_arg # Fallback para nome do canal
+    
+    description = template.format(
+        fact_text_for_description=facts_summary, 
+        topic_title=topic_title,
+        topic_hashtag=topic_hashtag_clean
+    )
+    
+    # Adicionar tags base do canal se não estiverem já no template por placeholders
+    base_tags_from_config = config.get("video_tags_list", [])
+    for tag in base_tags_from_config:
+        if f"#{tag.lower().replace(' ', '')}" not in description.lower(): # Evita duplicar e normaliza
+            description += f" #{tag.lower().replace(' ', '')}"
+            
+    logging.info(f"Descrição gerada (primeiros 250 chars): '{description[:250]}...'")
     return description
 
 def upload_video(youtube_service, video_path, title, description, tags, category_id, privacy_status="public"):
     logging.info(f"--- Upload INICIADO para: '{title}', Status: '{privacy_status}' ---")
-    print(f"PRINT: Iniciando upload para o vídeo: {title}") # Adicionado PRINT
-    sys.stdout.flush() # Força o flush
+    print(f"PRINT: Iniciando upload para o vídeo: {title}") 
+    sys.stdout.flush() 
     response_final_upload = None 
     try:
         if not video_path or not os.path.exists(video_path):
@@ -469,8 +586,8 @@ def upload_video(youtube_service, video_path, title, description, tags, category
             'snippet': {'title': title, 'description': description, 'tags': tags, 'categoryId': category_id},
             'status': {'privacyStatus': privacy_status}
         }
-        logging.info(f"Corpo da requisição para YouTube: {request_body}")
-        print(f"PRINT: Corpo da requisição para YouTube: {request_body}")
+        logging.info(f"Corpo da requisição para YouTube: {json.dumps(request_body, indent=2, ensure_ascii=False)}") # Log mais detalhado
+        print(f"PRINT: Corpo da requisição para YouTube: {json.dumps(request_body, indent=2, ensure_ascii=False)}")
         sys.stdout.flush()
 
         request = youtube_service.videos().insert(part=','.join(request_body.keys()), body=request_body, media_body=media)
@@ -480,12 +597,26 @@ def upload_video(youtube_service, video_path, title, description, tags, category
         
         done = False
         upload_progress_counter = 0
+        max_retries_no_progress = 10 # Número de vezes que tentaremos next_chunk sem progresso aparente
+        
         while not done:
             upload_progress_counter += 1
             logging.info(f"Tentativa de next_chunk #{upload_progress_counter}")
             print(f"PRINT: Tentativa de next_chunk #{upload_progress_counter}")
             sys.stdout.flush()
-            status, chunk_response = request.next_chunk() 
+            status, chunk_response = None, None # Resetar antes de cada chamada
+            try:
+                status, chunk_response = request.next_chunk() 
+            except Exception as e_chunk:
+                logging.error(f"ERRO em request.next_chunk(): {e_chunk}", exc_info=True)
+                print(f"PRINT ERROR em next_chunk(): {e_chunk}")
+                sys.stderr.flush()
+                # Considerar um número limitado de retentativas para erros de chunk aqui
+                if upload_progress_counter > max_retries_no_progress: # Exemplo, se falhar X vezes seguidas
+                    logging.error("Muitas falhas em next_chunk. Abortando upload.")
+                    return None
+                time.sleep(5 * upload_progress_counter) # Backoff exponencial simples
+                continue # Tenta o próximo chunk
             
             logging.info(f"next_chunk retornou: status={status}, chunk_response é None? {chunk_response is None}")
             print(f"PRINT: next_chunk retornou: status={status}, chunk_response é None? {chunk_response is None}")
@@ -501,10 +632,10 @@ def upload_video(youtube_service, video_path, title, description, tags, category
                 sys.stdout.flush()
                 done = True
                 response_final_upload = chunk_response
-            # Adicionando uma verificação para o caso de o loop rodar muitas vezes sem status e sem chunk_response
-            elif upload_progress_counter > 10 and status is None: # Tenta 10 vezes no máximo se não houver progresso
-                logging.error("Muitas tentativas de next_chunk sem progresso ou resposta. Abortando upload.")
-                print("PRINT ERROR: Muitas tentativas de next_chunk sem progresso ou resposta.")
+            # Verifica se o upload está travado (sem status e sem resposta por muitas tentativas)
+            elif status is None and upload_progress_counter > max_retries_no_progress : 
+                logging.error(f"Muitas tentativas de next_chunk ({upload_progress_counter}) sem progresso ou resposta final. Abortando upload.")
+                print(f"PRINT ERROR: Muitas tentativas de next_chunk ({upload_progress_counter}) sem progresso ou resposta final.")
                 sys.stderr.flush()
                 done = True # Força a saída do loop
                 response_final_upload = None # Garante que seja None
@@ -517,9 +648,10 @@ def upload_video(youtube_service, video_path, title, description, tags, category
             video_id = response_final_upload.get('id')
             if video_id:
                 logging.info(f"Upload completo! Vídeo ID: {video_id}")
-                logging.info(f"Link: https://www.youtube.com/watch?v={video_id}")
+                correct_youtube_link = f"http://www.youtube.com/watch?v={video_id}"
+                logging.info(f"Link do vídeo: {correct_youtube_link}")
                 print(f"PRINT SUCCESS: Upload completo! Vídeo ID: {video_id}")
-                print(f"PRINT SUCCESS: Link: https://www.youtube.com/watch?v={video_id}")
+                print(f"PRINT SUCCESS: Link do vídeo: {correct_youtube_link}")
                 sys.stdout.flush()
                 return video_id
             else:
@@ -551,6 +683,11 @@ def main(channel_name_arg):
     os.makedirs(os.path.join(ASSETS_DIR, "fonts"), exist_ok=True)
     os.makedirs(os.path.join(ASSETS_DIR, "music"), exist_ok=True)
 
+    chosen_topic = choose_topic(TOPIC_FILE_PATH, HISTORY_FILE_PATH, HISTORY_LENGTH)
+    logging.info(f"Tema selecionado para o vídeo: {chosen_topic}")
+    if not chosen_topic or "Gerais" in chosen_topic or "Aleatórias" in chosen_topic: # Se o fallback foi usado
+        logging.warning(f"Usando tema de fallback '{chosen_topic}'. Certifique-se que 'topics.txt' existe e tem conteúdo.")
+
     selected_music_path = None
     music_choices = config.get("music_options", [])
     if music_choices: 
@@ -570,8 +707,9 @@ def main(channel_name_arg):
     youtube_service = get_authenticated_service(client_secrets_path, token_path)
     if not youtube_service: logging.error("Falha YouTube auth."); sys.exit(1)
 
-    facts_list = get_facts_for_video(config.get("fact_keywords", []), config["gtts_language"], config["num_facts_to_use"])
-    if not facts_list: logging.error("Sem fatos."); sys.exit(1)
+    num_facts = config.get("num_facts_per_video", 15) # Aumentado para vídeos mais longos
+    facts_list = get_facts_for_video(chosen_topic, config["gtts_language"], num_facts)
+    if not facts_list: logging.error(f"Nenhum fato obtido para o tema '{chosen_topic}'. Encerrando."); sys.exit(1)
 
     narration_audio_files = []
     actual_facts_with_audio = [] 
@@ -587,7 +725,7 @@ def main(channel_name_arg):
             logging.warning(f"Falha áudio para fato: '{fact[:30]}...'.")
     
     if not narration_audio_files or len(narration_audio_files) != len(actual_facts_with_audio) or not actual_facts_with_audio :
-         logging.error(f"Geração de áudio inconsistente. Fatos válidos: {len(actual_facts_with_audio)}, Áudios: {len(narration_audio_files)}. Abortando.")
+         logging.error(f"Geração de áudio inconsistente ou falhou. Fatos válidos: {len(actual_facts_with_audio)}, Áudios: {len(narration_audio_files)}. Abortando.")
          for audio_f in narration_audio_files: 
              if os.path.exists(audio_f): os.remove(audio_f)
          sys.exit(1)
@@ -611,18 +749,34 @@ def main(channel_name_arg):
         logging.error("Falha criar vídeo.")
         sys.exit(1)
 
-    video_title = generate_video_title(actual_facts_with_audio, channel_name=channel_name_arg)
-    video_description = generate_video_description(actual_facts_with_audio, config, channel_name_arg) 
+    video_title = generate_video_title(actual_facts_with_audio, chosen_topic, channel_name=channel_name_arg)
+    video_description = generate_video_description(actual_facts_with_audio, config, channel_name_arg, chosen_topic) 
+    
+    # Prepara a lista de tags final
+    final_tags = list(config.get("video_tags_list", [])) 
+    topic_hashtag_clean = "".join(c for c in chosen_topic if c.isalnum()).lower()
+    if topic_hashtag_clean and topic_hashtag_clean not in final_tags:
+        final_tags.append(topic_hashtag_clean)
+    # Adiciona tags baseadas nos primeiros fatos, se desejar (exemplo)
+    # for fact in actual_facts_with_audio[:2]: # Pega palavras dos 2 primeiros fatos
+    #     words = fact.lower().split()
+    #     for word in words:
+    #         if len(word) > 4 and word.isalnum() and word not in final_tags and word not in ['sobre', 'fatos', 'curiosidades', topic_hashtag_clean]:
+    #             final_tags.append(word)
+    #             if len(final_tags) > 15: break # Limita o número de tags
+    #     if len(final_tags) > 15: break
     
     logging.info(f"==> Preparando para fazer upload do vídeo: '{video_title}' para o arquivo: {video_output_path}")
+    print(f"PRINT: Iniciando chamada para upload_video com título: {video_title}")
     sys.stdout.flush()
+
     video_id_uploaded = upload_video(
         youtube_service, 
         video_output_path, 
         video_title,
         video_description, 
-        config.get("video_tags_list", []),      
-        config.get("category_id"),             
+        final_tags,       
+        config.get("category_id"),               
         config.get("youtube_privacy_status", "public")
     )
     logging.info(f"==> Resultado do upload_video (video_id_uploaded): {video_id_uploaded}")
@@ -643,7 +797,7 @@ def main(channel_name_arg):
     logging.info(f"--- Fim do processo para o canal '{channel_name_arg}' ---")
     print(f"PRINT: --- Fim do processo para o canal '{channel_name_arg}' ---")
     sys.stdout.flush()
-    time.sleep(5) # Pequena pausa para garantir que os logs sejam enviados
+    time.sleep(5)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Automatiza a criação e upload de vídeos de curiosidades para o YouTube.")
@@ -659,7 +813,7 @@ if __name__ == "__main__":
         else: 
              logging.error(f"Script para '{args.channel if args else 'N/A'}' encerrado com erro (código {e.code}).")
              print(f"PRINT ERROR: Script para '{args.channel if args else 'N/A'}' encerrado com erro (código {e.code}).")
-             raise 
+             if e.code != 0: raise 
     except Exception as e_main_block:
         logging.error(f"ERRO INESPERADO NO BLOCO PRINCIPAL para '{args.channel if args else 'N/A'}': {e_main_block}", exc_info=True)
         print(f"PRINT CRITICAL ERROR: ERRO INESPERADO NO BLOCO PRINCIPAL para '{args.channel if args else 'N/A'}': {e_main_block}")

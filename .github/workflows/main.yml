@@ -115,13 +115,8 @@ jobs:
         run: pip install --upgrade -r requirements.txt
 
       - name: Executar Script de Automação
-        env:
-          # Estas são para o futuro, quando integrarmos IA para gerar conteúdo ou imagens.
-          # Por agora, o script main.py não as utiliza.
-          # GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GCP_SA_KEY_JSON_PATH }} 
-          # GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-          # GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
-          # GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }} 
+        # O bloco 'env:' foi removido temporariamente para simplificar e evitar erros de sintaxe.
+        # Ele será readicionado quando formos usar as APIs de IA.
         run: python -u scripts/main.py --channel "fizzquirk"
         
       - name: Commit e push topic_history.txt
@@ -131,9 +126,7 @@ jobs:
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           
           if [ -f topic_history.txt ]; then
-            # Adiciona o arquivo ao staging para verificar se há mudanças
             git add topic_history.txt
-            # Verifica se há mudanças no arquivo topic_history.txt prontas para commit
             if ! git diff --staged --quiet; then
               echo "topic_history.txt modificado, fazendo commit e push..."
               git commit -m "Update topic history [skip ci]"
